@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="左右のハンドルだけで走る夜の峠のドリフトタイムアタック。滑った跡が路面に黒く残る。">
+  <style>
+    /* 単体のページとして成立させるための最低限の土台 */
+    :root{
+      color-scheme: light;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#faf9f7; }
+    img{ max-width:100%; }
+    [hidden]{ display:none !important; }
+  </style>
+<title>黒い轍</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oxanium:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+  /* 夜の峠に振り切った配色。明暗の切り替えはせず、この一色で通す */
+  :root{
+    color-scheme: dark;
+    --night:#0B0C10;
+    --panel:#14161C;
+    --line:rgba(232,228,216,.14);
+    --text:#E8E4D8;
+    --dim:#7C7A73;
+    --amber:#F0873A;
+    --amber-hi:#FFC27A;
+    --cool:#5FD3E0;
+    --red:#E0453A;
+  }
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--night);color:var(--text);
+    font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',system-ui,sans-serif;
+  }
+  .page{
+    height:100%;box-sizing:border-box;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    padding:10px 16px 14px;
+  }
+
+  .masthead{text-align:center;flex:0 0 auto}
+  .masthead h1{
+    margin:0;font-size:clamp(17px,4.6vw,22px);font-weight:700;
+    letter-spacing:.42em;text-indent:.42em;
+  }
+  .masthead p{margin:2px 0 0;font-size:11px;color:var(--dim);letter-spacing:.1em}
+
+  .stage{flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:center;justify-content:center}
+  .rig{display:inline-flex;flex-direction:column;gap:5px;max-width:100%}
+
+  .tabs{display:flex;gap:4px}
+  .tab{
+    flex:1 1 0;min-width:0;
+    font-family:'Zen Kaku Gothic New',sans-serif;font-size:12px;font-weight:500;
+    letter-spacing:.08em;padding:6px 2px;cursor:pointer;
+    color:var(--dim);background:var(--panel);
+    border:1px solid var(--line);border-radius:0;
+    display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.3;
+  }
+  .tab b{font-weight:700;font-size:13px;color:inherit}
+  .tab i{font-style:normal;font-size:8.5px;opacity:.75}
+  .tab.on{color:var(--amber);border-color:var(--amber);background:rgba(240,135,58,.10)}
+  .tab:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+
+  .dash{
+    display:flex;align-items:center;gap:11px;
+    background:var(--panel);border:1px solid var(--line);
+    padding:6px 9px;
+  }
+  .dash .cell{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .dash .k{font-family:'Oxanium',monospace;font-size:7.5px;letter-spacing:.2em;color:var(--dim)}
+  .dash .v{
+    font-family:'Oxanium',monospace;font-weight:700;font-size:16px;line-height:1;
+    font-variant-numeric:tabular-nums;
+  }
+  .dash .v.sm{font-size:12px}
+  .dash .drift .v{color:var(--dim);transition:color .12s ease}
+  .dash.sliding .drift .v{color:var(--amber-hi)}
+  .dash .sp{flex:1}
+
+  .prog{height:3px;background:var(--panel);border:1px solid var(--line);border-top:none}
+  .prog i{display:block;height:100%;width:0;background:var(--cool)}
+
+  .screen{
+    position:relative;display:inline-block;line-height:0;
+    border:1px solid var(--line);background:#000;max-width:100%;overflow:hidden;
+  }
+  canvas{display:block;touch-action:none}
+  .glow{
+    position:absolute;inset:0;pointer-events:none;opacity:0;
+    box-shadow:inset 0 0 40px rgba(240,135,58,.55);
+    transition:opacity .16s ease;
+  }
+  .glow.on{opacity:1}
+
+  .count{
+    position:absolute;inset:0;pointer-events:none;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .count.off{display:none}
+  .count span{
+    display:grid;place-items:center;
+    width:124px;height:124px;border-radius:50%;
+    background:rgba(5,6,10,.82);
+    border:3px solid rgba(240,135,58,.7);
+    box-shadow:0 0 0 6px rgba(5,6,10,.45), 0 0 30px rgba(0,0,0,.7);
+    font-family:'Oxanium',monospace;font-weight:700;font-size:60px;line-height:1;
+    color:#FFF4E6;text-shadow:0 2px 10px rgba(0,0,0,.9);
+    animation:pop .4s ease-out;
+  }
+  .count.go span{
+    font-size:40px;letter-spacing:.12em;text-indent:.12em;
+    color:#8CF0AE;border-color:rgba(140,240,174,.85);
+  }
+  @keyframes pop{ from{ transform:scale(1.35); opacity:.2 } to{ transform:scale(1); opacity:1 } }
+  @media (prefers-reduced-motion:reduce){ .count span{animation:none} }
+
+  .veil{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:11px;padding:20px;box-sizing:border-box;text-align:center;
+    background:rgba(8,9,13,.92);line-height:1.75;
+  }
+  .veil.off{display:none}
+  .veil h2{
+    margin:0;font-family:'Oxanium',monospace;font-weight:700;
+    font-size:clamp(14px,4.4vw,19px);letter-spacing:.16em;color:var(--amber);
+  }
+  .veil p{margin:0;font-size:12px;color:#C4C0B6;max-width:22em}
+  .veil .course{font-size:15px;font-weight:700;color:var(--text);letter-spacing:.14em}
+  .veil .course em{font-style:normal;font-size:10px;font-weight:400;color:var(--cool);letter-spacing:.1em}
+  .veil .big{
+    font-family:'Oxanium',monospace;font-weight:700;font-size:34px;
+    font-variant-numeric:tabular-nums;color:var(--text);line-height:1;
+  }
+  .veil .sub{font-family:'Oxanium',monospace;font-size:9px;letter-spacing:.18em;color:var(--cool)}
+  .go{
+    font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700;font-size:13px;
+    letter-spacing:.22em;text-indent:.22em;
+    padding:9px 22px;cursor:pointer;
+    color:#0B0C10;background:var(--amber);border:none;
+  }
+  .go:hover{background:var(--amber-hi)}
+  .go:focus-visible{outline:2px solid var(--cool);outline-offset:3px}
+
+  .legend{
+    flex:0 0 auto;width:100%;max-width:520px;
+    border-top:1px solid var(--line);padding-top:7px;
+    display:flex;flex-wrap:wrap;gap:3px 14px;
+    font-size:11px;color:var(--dim);
+  }
+  .legend span{white-space:nowrap}
+  @media (max-height:640px){ .masthead p{display:none} }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="masthead">
+    <h1>黒い轍</h1>
+    <p>下りの峠をひとっ走り。ブレーキは無い、滑らせて止めろ</p>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="rig" id="rig">
+      <div class="tabs" id="tabs">
+        <button class="tab on" type="button" data-c="0"><b>杉ノ沢</b><i>バランス</i></button>
+        <button class="tab"    type="button" data-c="1"><b>鷹ノ巣</b><i>高速・長い</i></button>
+        <button class="tab"    type="button" data-c="2"><b>蛇骨</b><i>ヘアピン連続</i></button>
+      </div>
+
+      <div class="dash" id="dash">
+        <div class="cell"><span class="k">TIME</span><span class="v" id="vTime">0.00</span></div>
+        <div class="cell"><span class="k">BEST</span><span class="v sm" id="vBest">--</span></div>
+        <div class="cell drift"><span class="k">DRIFT</span><span class="v sm" id="vDrift">0</span></div>
+        <div class="sp"></div>
+        <div class="cell"><span class="k">KM/H</span><span class="v sm" id="vSpd">0</span></div>
+      </div>
+      <div class="prog"><i id="progBar"></i></div>
+
+      <div class="screen" id="screen">
+        <canvas id="game" aria-label="黒い轍 ゲーム画面"></canvas>
+        <div class="glow" id="glow" aria-hidden="true"></div>
+        <div class="count off" id="count" aria-hidden="true"><span id="countN">3</span></div>
+        <div class="veil" id="veil">
+          <h2 id="veilTitle">TOUGE TIME ATTACK</h2>
+          <p id="veilBody">
+            左右だけ。アクセルは自動、ブレーキは無い。<br>
+            ヘアピンは曲がりきれない。<br>
+            <b>滑らせて速度を落とす</b>のが唯一の減速。
+          </p>
+          <button class="go" id="goBtn" type="button">スタート</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span>← → / A D でハンドル</span>
+    <span>スマホは画面の左半分・右半分をおす</span>
+    <span>Space＝スタート／やり直し</span>
+    <span>P＝やすみ</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var W = 240, H = 360;                 // 画面に映る広さ（せまくして車を大きく見せる）
+  var cv = document.getElementById('game');
+  var ctx = cv.getContext('2d');
+
+  var stage = document.getElementById('stage');
+  var dash  = document.getElementById('dash');
+  var glow  = document.getElementById('glow');
+  var countEl = document.getElementById('count');
+  var countN  = document.getElementById('countN');
+  var veil  = document.getElementById('veil');
+  var veilTitle = document.getElementById('veilTitle');
+  var veilBody  = document.getElementById('veilBody');
+  var goBtn = document.getElementById('goBtn');
+  var vTime = document.getElementById('vTime');
+  var vBest = document.getElementById('vBest');
+  var vDrift = document.getElementById('vDrift');
+  var vSpd  = document.getElementById('vSpd');
+  var progBar = document.getElementById('progBar');
+  var tabsEl  = document.getElementById('tabs');
+
+  var COL = {
+    ground:'#0E1015', groundDot:'#171A22',
+    road:'#22242B', edge:'#D9D5C8', center:'#5E5B54',
+    mark:'rgba(0,0,0,0.6)',
+    body:'#F0873A', bodyDark:'#8A421A', roof:'#241A12',
+    lamp:'rgba(255,224,170,0.14)', lampCore:'#FFE9BC',
+    smoke:'rgba(198,198,206,0.26)',
+    wall:'#3A2E26'
+  };
+
+  // ---------- 車の性能 ----------
+  var ACCEL = 155, MAXS = 244, TURN = 3.8;
+  var GRIP = 2.0;        // 横に戻ろうとする強さ（小さいほど滑る）
+  var SPEEDSLIP = 0.62;  // 速いときにどれだけグリップが落ちるか
+  var SLIDEMAX = 235;    // これ以上流れるとグリップが抜ける（スピン）
+  var STEERUP = 8.0;     // ハンドルが切れていく速さ（大きいほど即座に最大舵角）
+  var STEERDN = 11.0;    // 戻す速さ
+  var HOLD = 0.58;       // ハンドルを切り続けたとき、どれだけ後ろが出るか（荷重移動）
+  var SCRUB = 0.62;      // 滑るとスピードが落ちる量。ブレーキの代わり
+  var HALF = 44;         // 道のはばの半分（道はば88 ＝ 車 約3.4台ぶん）
+  var WALL = 34;         // 路肩の外、ここまで出ると壁
+
+  // ---------- コース（直線と、半径を指定したカーブの列）----------
+  // S=直線(長さ) / L=左カーブ(半径,角度) / R=右カーブ(半径,角度)
+  var COURSES = [
+    { name:'杉ノ沢', tag:'バランス', segs:[
+      ['S',300],['L',175,55],['S',150],['R',62,168],['S',230],
+      ['L',125,72],['R',125,72],['S',150],['L',210,84],['S',250],
+      ['R',66,172],['S',300],['L',150,62],['R',150,62],['S',170],
+      ['L',88,124],['S',210],['R',215,76],['S',240],['L',64,176],['S',430]
+    ]},
+    { name:'鷹ノ巣', tag:'高速・長い', segs:[
+      ['S',520],['L',260,62],['S',380],['R',300,70],['S',300],
+      ['L',230,95],['S',440],['R',240,80],['S',260],['L',74,170],
+      ['S',520],['R',280,72],['S',360],['L',260,66],['S',560]
+    ]},
+    { name:'蛇骨', tag:'ヘアピン連続', segs:[
+      ['S',210],['R',58,175],['S',130],['L',60,170],['S',150],
+      ['R',72,140],['L',72,140],['S',120],['R',56,178],['S',170],
+      ['L',84,120],['S',110],['R',64,165],['S',140],['L',58,172],
+      ['S',190],['R',92,110],['S',130],['L',66,160],['S',280]
+    ]}
+  ];
+  var courseIdx = 0;
+  var TRACK = [], TRACKLEN = 0, STEP = 7;
+
+  function buildTrack(){
+    var COURSE = COURSES[courseIdx].segs;
+    TRACK.length = 0;
+    var x = 0, y = 0, a = 0, d = 0;      // a: 進行方向（0=上, 正=右回り）
+    function push(){
+      TRACK.push({ x:x, y:y, a:a, d:d, nx:Math.cos(a), ny:Math.sin(a) });
+    }
+    push();
+    for (var i=0;i<COURSE.length;i++){
+      var sg = COURSE[i];
+      if (sg[0] === 'S') {
+        var n = Math.max(1, Math.round(sg[1]/STEP));
+        for (var j=0;j<n;j++){
+          x += Math.sin(a)*STEP; y += -Math.cos(a)*STEP; d += STEP; push();
+        }
+      } else {
+        var rad = sg[1], deg = sg[2] * Math.PI/180;
+        var len = rad * deg;
+        var n2 = Math.max(2, Math.round(len/STEP));
+        var dA = (sg[0]==='R' ? deg : -deg) / n2;
+        for (var k=0;k<n2;k++){
+          a += dA;
+          x += Math.sin(a)*STEP; y += -Math.cos(a)*STEP; d += STEP; push();
+        }
+      }
+    }
+    TRACKLEN = d;
+  }
+  buildTrack();
+
+  // 車に一番近いコース上の点を、前回の位置の近くから探す
+  function nearest(px, py, from){
+    var lo = Math.max(0, from-260), hi = Math.min(TRACK.length-1, from+240);
+    var bi = from, bd = 1e9, i, dx, dy, dd;
+    for (i=lo;i<=hi;i++){
+      dx = TRACK[i].x - px; dy = TRACK[i].y - py; dd = dx*dx + dy*dy;
+      if (dd < bd) { bd = dd; bi = i; }
+    }
+    if (bd > 420*420) {          // 見失った。全体から探し直す
+      for (i=0;i<TRACK.length;i++){
+        dx = TRACK[i].x - px; dy = TRACK[i].y - py; dd = dx*dx + dy*dy;
+        if (dd < bd) { bd = dd; bi = i; }
+      }
+    }
+    return bi;
+  }
+
+  // ---------- 大きさ ----------
+  var dpr = 1, scale = 1, lastW = 0, lastH = 0;
+  function layout(){
+    var r = stage.getBoundingClientRect();
+    var availW = (r.width  > 0 ? r.width  : 340) - 4;
+    var availH = (r.height > 0 ? r.height : 520) - 44;
+    var w = Math.min(availW, 380), h = w * H / W;
+    if (h > availH) { h = availH; w = h * W / H; }
+    if (!(w > 40)) { w = 280; h = w * H / W; }
+    w = Math.round(w); h = Math.round(h);
+    if (w === lastW && h === lastH) return;
+    lastW = w; lastH = h;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    cv.width  = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    scale = w / W;
+    ctx.setTransform(scale*dpr, 0, 0, scale*dpr, 0, 0);
+  }
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', layout);
+  try { new ResizeObserver(layout).observe(stage); } catch(e){}
+
+  // ---------- 状態 ----------
+  var st = 'title';                      // title / count / play / done / pause
+  var car = { x:0, y:0, ang:0, vx:0, vy:0 };
+  var camX = 0, camY = 0;
+  var idx = 0, time = 0, best = 0, countT = 0;
+  var score = 0, pending = 0, mult = 1, driftT = 0, idleT = 0, sliding = false;
+  var marks = [], smoke = [], lastWheels = null, hitT = 0, stuckT = 0, holdT = 0, steerV = 0;
+
+  var bests = [0,0,0];
+  function loadBest(){
+    try {
+      for (var i=0;i<3;i++){ var v = localStorage.getItem('wadachi.time.'+i); if (v) bests[i] = parseFloat(v)||0; }
+    } catch(e){}
+    best = bests[courseIdx];
+  }
+  function saveBest(){
+    bests[courseIdx] = best;
+    try { localStorage.setItem('wadachi.time.'+courseIdx, String(best)); } catch(e){}
+  }
+  function fmt(t){ return t.toFixed(2); }
+
+  function reset(){
+    var s0 = TRACK[0];
+    car.x = s0.x; car.y = s0.y; car.ang = s0.a; car.vx = 0; car.vy = 0;
+    camX = car.x - W/2; camY = car.y - H/2;
+    idx = 0; time = 0;
+    score = 0; pending = 0; mult = 1; driftT = 0; idleT = 0; sliding = false;
+    marks.length = 0; smoke.length = 0; lastWheels = null; hitT = 0; stuckT = 0; holdT = 0; steerV = 0;
+  }
+  function startGame(){ reset(); st = 'count'; countT = 3.2; countEl.classList.remove('off'); veil.classList.add('off'); lastT = 0; }
+  function showTitle(){
+    st = 'title'; reset();
+    var c = COURSES[courseIdx];
+    veilTitle.textContent = 'TOUGE TIME ATTACK';
+    veilBody.innerHTML = '<span class="course">' + c.name + '　<em>' + c.tag + '　全長 ' + Math.round(TRACKLEN) + '</em></span><br>' +
+      '左右だけ。アクセルは自動、ブレーキは無い。<br>' +
+      'ヘアピンは曲がりきれない。<br><b>滑らせて速度を落とす</b>のが唯一の減速。';
+    goBtn.textContent = 'スタート';
+    veil.classList.remove('off');
+    countEl.classList.add('off');
+  }
+  function finish(){
+    st = 'done';
+    bank();
+    var isNew = (best === 0 || time < best);
+    if (isNew) { best = time; saveBest(); }
+    veilTitle.textContent = 'GOAL';
+    veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
+      '<span class="big">' + fmt(time) + '</span><br>' +
+      '<span class="sub">' + (isNew ? 'NEW BEST' : 'BEST ' + fmt(best)) + '</span><br>' +
+      'ドリフト ' + score.toLocaleString('ja-JP') + ' 点';
+    goBtn.textContent = 'もういちど';
+    veil.classList.remove('off');
+    countEl.classList.add('off');
+  }
+  function setPause(on){
+    if (on) { st = 'pause'; veilTitle.textContent = 'PAUSE'; veilBody.innerHTML = 'ひとやすみ'; goBtn.textContent = 'つづける'; veil.classList.remove('off'); }
+    else { st = 'play'; veil.classList.add('off'); lastT = 0; }
+  }
+  function setCourse(i){
+    courseIdx = i;
+    buildTrack();
+    best = bests[courseIdx];
+    var btns = tabsEl.getElementsByTagName('button');
+    for (var k=0;k<btns.length;k++) btns[k].classList.toggle('on', k === courseIdx);
+    prev = {};
+    showTitle();
+  }
+  tabsEl.addEventListener('click', function(e){
+    var b = e.target;
+    while (b && b !== tabsEl && !b.getAttribute('data-c')) b = b.parentNode;
+    if (b && b !== tabsEl) setCourse(parseInt(b.getAttribute('data-c'), 10));
+  });
+
+  goBtn.addEventListener('click', function(){ if (st === 'pause') setPause(false); else startGame(); });
+
+  // ---------- そうさ（左右だけ） ----------
+  var keys = {}, touchDir = 0;
+  window.addEventListener('keydown', function(e){
+    var k = e.key;
+    if (k === ' ' || k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') e.preventDefault();
+    keys[k] = true;
+    if (k === ' ' || k === 'Enter') {
+      if (st === 'title' || st === 'done') startGame();
+      else if (st === 'pause') setPause(false);
+    }
+    if (k === 'p' || k === 'P') { if (st === 'play') setPause(true); else if (st === 'pause') setPause(false); }
+  });
+  window.addEventListener('keyup', function(e){ keys[e.key] = false; });
+  window.addEventListener('blur', function(){ keys = {}; touchDir = 0; });
+
+  function touchAt(e){
+    var r = cv.getBoundingClientRect();
+    touchDir = ((e.clientX - r.left) / r.width < 0.5) ? -1 : 1;
+  }
+  cv.addEventListener('pointerdown', function(e){
+    try { cv.setPointerCapture(e.pointerId); } catch(err){}
+    touchAt(e);
+  });
+  cv.addEventListener('pointermove', function(e){ if (e.buttons) touchAt(e); });
+  cv.addEventListener('pointerup', function(){ touchDir = 0; });
+  cv.addEventListener('pointercancel', function(){ touchDir = 0; });
+  cv.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+  function steerDir(){
+    var d = 0;
+    if (keys['ArrowLeft']  || keys['a'] || keys['A']) d -= 1;
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) d += 1;
+    if (d === 0) d = touchDir;
+    return d;
+  }
+
+  function bank(){
+    if (pending > 0) score += Math.round(pending * mult);
+    pending = 0; mult = 1; driftT = 0;
+  }
+
+  // ---------- 1コマ ----------
+  function step(dt){
+    if (st === 'count') {
+      countT -= dt;
+      if (countT <= 0) { st = 'play'; countEl.classList.add('off'); }
+      return;
+    }
+    if (st !== 'play') return;
+
+    time += dt;
+
+    var d = steerDir();
+    var sp = Math.hypot(car.vx, car.vy);
+    // 切り続けるほど後ろが出る。戻すと素早く収まる
+    if (d !== 0) holdT = Math.min(1, holdT + dt*1.7); else holdT = Math.max(0, holdT - dt*2.8);
+    // ハンドルは一気にではなく、押している長さに応じて切れていく
+    var rate = (d === 0 || d * steerV < 0) ? STEERDN : STEERUP;
+    steerV += (d - steerV) * Math.min(1, rate * dt);
+    car.ang += steerV * TURN * Math.max(0.32, Math.min(1, sp/70)) * dt;  // 止まっていても向きは変えられる
+
+    var fx = Math.sin(car.ang), fy = -Math.cos(car.ang);
+    var rx = Math.cos(car.ang), ry = Math.sin(car.ang);
+    var fwd = car.vx*fx + car.vy*fy;
+    var lat = car.vx*rx + car.vy*ry;
+
+    // コース上のどこにいるか
+    idx = nearest(car.x, car.y, idx);
+    var sN = TRACK[idx];
+    var offv = (car.x - sN.x)*sN.nx + (car.y - sN.y)*sN.ny;   // 中心からの横ずれ
+    var off = Math.abs(offv) - HALF;
+    var onRoad = off < 0;
+
+    // 前へ
+    fwd += ACCEL * dt;
+    fwd -= fwd * (onRoad ? 0.16 : 1.1) * dt;
+    fwd -= Math.abs(lat) * SCRUB * dt;         // 滑るとスピードが落ちる＝これが唯一の減速
+    if (fwd > MAXS) fwd = MAXS;
+    if (fwd < 0) fwd = 0;
+
+    // 横のグリップ
+    var gBase = (Math.abs(lat) > SLIDEMAX ? 1.6 : GRIP);
+    var fast = 1 - SPEEDSLIP * Math.min(1, sp / MAXS);
+    var grip = gBase * fast * (1 - HOLD*holdT) * (onRoad ? 1 : 0.5);
+    lat -= lat * Math.min(1, grip * dt);
+
+    car.vx = fx*fwd + rx*lat;
+    car.vy = fy*fwd + ry*lat;
+    car.x += car.vx * dt;
+    car.y += car.vy * dt;
+
+    // 壁
+    if (off > WALL) {
+      var sgn = offv > 0 ? 1 : -1;
+      // 壁の内側へ少し戻す（ちょうどの位置に置くと張り付く）
+      car.x = sN.x + sN.nx * sgn * (HALF + WALL - 7);
+      car.y = sN.y + sN.ny * sgn * (HALF + WALL - 7);
+      // 壁へ向かう成分だけ消す。前へ進む成分は残すので、壁ぞいに流れて復帰できる
+      var vn = car.vx*sN.nx + car.vy*sN.ny;
+      if (vn * sgn > 0) { car.vx -= sN.nx * vn; car.vy -= sN.ny * vn; }
+      car.vx *= 0.72; car.vy *= 0.72;
+      hitT = 0.35;
+      pending = 0; mult = 1; driftT = 0;
+      for (var i=0;i<8;i++) smoke.push({ x:car.x, y:car.y, r:4+Math.random()*7, life:1 });
+    }
+    if (hitT > 0) hitT -= dt;
+
+    // どうにも動けなくなったら、コースの中心へ戻して立て直す
+    if (Math.hypot(car.vx, car.vy) < 16) stuckT += dt; else stuckT = 0;
+    if (stuckT > 1.1) {
+      stuckT = 0;
+      car.x = sN.x; car.y = sN.y; car.ang = sN.a;
+      car.vx = Math.sin(sN.a)*55; car.vy = -Math.cos(sN.a)*55;
+      hitT = 0.5;
+    }
+
+    // 滑り具合
+    sp = Math.hypot(car.vx, car.vy);
+    var slip = Math.abs(Math.atan2(lat, Math.max(18, fwd)));
+    sliding = (slip > 0.18 && sp > 80 && onRoad);
+
+    if (sliding) {
+      driftT += dt; idleT = 0;
+      mult = Math.min(8, 1 + Math.floor(driftT / 1.5));
+      pending += slip * sp * dt * 1.6;
+    } else {
+      idleT += dt;
+      if (pending > 0 && idleT > 0.4) bank();
+    }
+
+    // 轍と煙
+    var wl = { x: car.x - rx*10 - fx*15, y: car.y - ry*10 - fy*15 };
+    var wr = { x: car.x + rx*10 - fx*15, y: car.y + ry*10 - fy*15 };
+    if (Math.abs(lat) > 34) {
+      if (lastWheels) {
+        marks.push({ x1:lastWheels.l.x, y1:lastWheels.l.y, x2:wl.x, y2:wl.y });
+        marks.push({ x1:lastWheels.r.x, y1:lastWheels.r.y, x2:wr.x, y2:wr.y });
+        while (marks.length > 1400) marks.shift();
+      }
+      if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1 });
+      lastWheels = { l:wl, r:wr };
+    } else lastWheels = null;
+
+    for (var s=smoke.length-1;s>=0;s--){
+      var sm = smoke[s];
+      sm.r += 20*dt; sm.life -= dt*1.2;
+      if (sm.life <= 0) smoke.splice(s,1);
+    }
+
+    // ゴール
+    if (idx >= TRACK.length - 3) finish();
+
+    // 画面の追従（速度のぶんだけ先を見る）
+    var tx = car.x + car.vx*0.42 - W/2;
+    var ty = car.y + car.vy*0.42 - H/2;
+    var k = Math.min(1, 6.5*dt);
+    camX += (tx - camX) * k;
+    camY += (ty - camY) * k;
+  }
+
+  // ---------- 絵 ----------
+  function visibleRuns(){
+    var cx = camX + W/2, cy = camY + H/2, lim = (W+H)/2 + 140;
+    var runs = [], cur = null;
+    for (var i=0;i<TRACK.length;i++){
+      var s = TRACK[i];
+      if (Math.abs(s.x-cx) < lim && Math.abs(s.y-cy) < lim) {
+        if (!cur) { cur = []; runs.push(cur); }
+        cur.push(s);
+      } else cur = null;
+    }
+    return runs;
+  }
+
+  function strokeRuns(runs, width, color, dash){
+    ctx.strokeStyle = color; ctx.lineWidth = width;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    if (dash) ctx.setLineDash(dash); else ctx.setLineDash([]);
+    for (var r=0;r<runs.length;r++){
+      var run = runs[r];
+      if (run.length < 2) continue;
+      // 破線は道の始点からの距離に合わせる（画面が動いても模様がずれない）
+      ctx.lineDashOffset = dash ? run[0].d : 0;   // 符号に注意。マイナスだと逆に2倍ずれる
+      ctx.beginPath();
+      ctx.moveTo(run[0].x - camX, run[0].y - camY);
+      for (var i=1;i<run.length;i++) ctx.lineTo(run[i].x - camX, run[i].y - camY);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  function draw(){
+    ctx.fillStyle = COL.ground;
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = COL.groundDot;
+    for (var g=0; g<44; g++){
+      var gx = (((g*137) % 400) - camX*0.35) % 400, gy = (((g*211) % 400) - camY*0.35) % 400;
+      gx = ((gx % 400)+400)%400; gy = ((gy % 400)+400)%400;
+      if (gx < W && gy < H) ctx.fillRect(gx, gy, 2, 2);
+    }
+
+    var runs = visibleRuns();
+    strokeRuns(runs, (HALF+WALL)*2, COL.wall);       // 路肩
+    strokeRuns(runs, HALF*2 + 5, COL.edge);          // 白線
+    strokeRuns(runs, HALF*2, COL.road);              // 路面
+
+    // 轍
+    if (marks.length) {
+      ctx.strokeStyle = COL.mark; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (var m=0;m<marks.length;m++){
+        var mk = marks[m];
+        var sx = mk.x1 - camX, sy = mk.y1 - camY;
+        if (sx < -50 || sx > W+50 || sy < -50 || sy > H+50) continue;
+        ctx.moveTo(sx, sy); ctx.lineTo(mk.x2 - camX, mk.y2 - camY);
+      }
+      ctx.stroke();
+    }
+
+    strokeRuns(runs, 2, COL.center, [12,16]);        // 中央線
+
+    // スタート／ゴール
+    drawGate(TRACK[0], '#E8E4D8');
+    drawGate(TRACK[TRACK.length-1], '#5FD3E0');
+
+    // 煙
+    for (var s=0;s<smoke.length;s++){
+      var sm = smoke[s];
+      ctx.globalAlpha = Math.max(0, sm.life) * 0.5;
+      ctx.fillStyle = COL.smoke;
+      ctx.beginPath(); ctx.arc(sm.x - camX, sm.y - camY, sm.r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    drawCar();
+  }
+
+  function drawGate(s, color){
+    var x = s.x - camX, y = s.y - camY;
+    if (x < -80 || x > W+80 || y < -80 || y > H+80) return;
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(s.a);
+    ctx.fillStyle = color;
+    for (var i=-HALF;i<HALF;i+=11) ctx.fillRect(i, -3, 5.5, 6);
+    ctx.restore();
+  }
+
+  function drawCar(){
+    var blink = hitT > 0 && Math.floor(hitT*20) % 2 === 0;
+    ctx.save();
+    ctx.translate(car.x - camX, car.y - camY);
+    ctx.rotate(car.ang);
+
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = COL.lamp;
+    ctx.beginPath();
+    ctx.moveTo(-9, -22); ctx.lineTo(-46, -190); ctx.lineTo(46, -190); ctx.lineTo(9, -22);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (!blink) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(-12, -20, 24, 46);
+      ctx.fillStyle = COL.body;
+      ctx.fillRect(-13, -23, 26, 46);
+      ctx.fillStyle = COL.bodyDark;
+      ctx.fillRect(-13, -23, 26, 6);
+      ctx.fillRect(-13, 17, 26, 6);
+      ctx.fillStyle = COL.roof;
+      ctx.fillRect(-9, -9, 18, 19);
+      ctx.fillStyle = COL.lampCore;
+      ctx.fillRect(-11, -25, 6.5, 3.5);
+      ctx.fillRect(4.5, -25, 6.5, 3.5);
+      ctx.fillStyle = '#E0453A';
+      ctx.fillRect(-11, 21, 6.5, 3);
+      ctx.fillRect(4.5, 21, 6.5, 3);
+    }
+    ctx.restore();
+  }
+
+  // ---------- 表示 ----------
+  var prev = {};
+  function syncDash(){
+    var t = (st === 'play' || st === 'pause' || st === 'done') ? time : 0;
+    var ts = fmt(t);
+    if (prev.t !== ts) { vTime.textContent = ts; prev.t = ts; }
+    var bs = best ? fmt(best) : '--';
+    if (prev.b !== bs) { vBest.textContent = bs; prev.b = bs; }
+    var ds = (score + Math.round(pending*mult)).toLocaleString('ja-JP');
+    if (prev.d !== ds) { vDrift.textContent = ds; prev.d = ds; }
+    var kmh = Math.round(Math.hypot(car.vx, car.vy) * 0.62);
+    if (prev.s !== kmh) { vSpd.textContent = kmh; prev.s = kmh; }
+    var pg = Math.round(idx / Math.max(1, TRACK.length-1) * 100);
+    if (prev.p !== pg) { progBar.style.width = pg + '%'; prev.p = pg; }
+    if (prev.sl !== sliding) {
+      dash.classList.toggle('sliding', sliding);
+      glow.classList.toggle('on', sliding);
+      prev.sl = sliding;
+    }
+    if (st === 'count') {
+      var n = Math.ceil(countT - 0.2);
+      var txt = n > 0 ? String(n) : 'GO';
+      if (prev.c !== txt) {
+        countN.textContent = txt;
+        countEl.classList.toggle('go', txt === 'GO');
+        countN.style.animation = 'none'; void countN.offsetHeight; countN.style.animation = '';
+        prev.c = txt;
+      }
+    }
+  }
+
+  // ---------- まわす ----------
+  var lastT = 0, acc = 0;
+  function frame(now){
+    requestAnimationFrame(frame);
+    if (!lastT) { lastT = now; return; }
+    var dt = Math.min(0.05, (now - lastT)/1000);
+    lastT = now;
+    if (st !== 'pause') {
+      acc += dt;
+      var g = 0;
+      while (acc >= 1/60 && g < 6) { step(1/60); acc -= 1/60; g++; }
+      if (g >= 6) acc = 0;
+      draw();
+    }
+    syncDash();
+  }
+
+  function boot(saved){
+    loadBest();
+    if (saved && saved.best && (!best || saved.best < best)) { best = saved.best; saveBest(); }
+    layout();
+    setCourse(0);
+    syncDash();
+    requestAnimationFrame(frame);
+  }
+  try {
+    var hot = window.claude && window.claude.hot;
+    if (hot && hot.snapshot) hot.snapshot(function(){ return { best: best }; });
+    if (hot && hot.ready) hot.ready(boot);
+    else boot((hot && hot.data) || {});
+  } catch(e){ boot({}); }
+})();
+</script>
+</body>
+</html>
