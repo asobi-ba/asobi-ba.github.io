@@ -251,7 +251,7 @@
   var HOLD = 0.58;       // ハンドルを切り続けたとき、どれだけ後ろが出るか（荷重移動）
   var SCRUB = 0.62;      // 滑るとスピードが落ちる量。ブレーキの代わり
   var HALF = 44;         // 道のはばの半分（道はば88 ＝ 車 約3.4台ぶん）
-  var WALL = 34;         // 路肩の外、ここまで出ると壁
+  var WALL = 28;         // 路肩の外、ここまで出ると壁
 
   // ---------- コース（直線と、半径を指定したカーブの列）----------
   // S=直線(長さ) / L=左カーブ(半径,角度) / R=右カーブ(半径,角度)
@@ -304,24 +304,42 @@
       }
     }
     TRACKLEN = d;
+    buildCheckpoints();
   }
   buildTrack();
 
   // 車に一番近いコース上の点を、前回の位置の近くから探す
+  // 現在地は「前のコマの位置のすぐ近く」からしか探さない。
+  // 広く探すと、ヘアピンで折り返した先の道へ飛び移れてしまう（＝ショートカット）
   function nearest(px, py, from){
-    var lo = Math.max(0, from-260), hi = Math.min(TRACK.length-1, from+240);
+    var lo = Math.max(0, from-12), hi = Math.min(TRACK.length-1, from+4);
     var bi = from, bd = 1e9, i, dx, dy, dd;
     for (i=lo;i<=hi;i++){
       dx = TRACK[i].x - px; dy = TRACK[i].y - py; dd = dx*dx + dy*dy;
       if (dd < bd) { bd = dd; bi = i; }
     }
-    if (bd > 420*420) {          // 見失った。全体から探し直す
-      for (i=0;i<TRACK.length;i++){
-        dx = TRACK[i].x - px; dy = TRACK[i].y - py; dd = dx*dx + dy*dy;
-        if (dd < bd) { bd = dd; bi = i; }
-      }
-    }
     return bi;
+  }
+
+  // ---------- 関門（道を横切る線。順番にくぐらないとゴールと認めない）----------
+  // 番号だけで見ると、ヘアピンの内側を突っ切っても「通った」ことになってしまう。
+  // 関門の線を、道幅の中で、手前から先へ越えたときだけ通過と数える。
+  var GATES = [], nextGate = 0, gatePrevS = null;
+  function buildCheckpoints(){
+    GATES = [];
+    for (var c = 20; c < TRACK.length - 12; c += 22) GATES.push(TRACK[c]);
+  }
+  function checkGate(){
+    if (nextGate >= GATES.length) return;
+    var g = GATES[nextGate];
+    var dx = car.x - g.x, dy = car.y - g.y;
+    var sAlong = dx * Math.sin(g.a) + dy * (-Math.cos(g.a));   // 関門の手前か先か
+    var tSide  = dx * g.nx + dy * g.ny;                        // 関門の左右のずれ
+    if (gatePrevS !== null && gatePrevS < 0 && sAlong >= 0 && Math.abs(tSide) <= HALF + WALL + 6) {
+      nextGate++; gatePrevS = null;                            // くぐった
+    } else {
+      gatePrevS = sAlong;
+    }
   }
 
   // ---------- 大きさ ----------
@@ -373,6 +391,7 @@
     car.x = s0.x; car.y = s0.y; car.ang = s0.a; car.vx = 0; car.vy = 0;
     camX = car.x - W/2; camY = car.y - H/2;
     idx = 0; time = 0;
+    nextGate = 0; gatePrevS = null;
     score = 0; pending = 0; mult = 1; driftT = 0; idleT = 0; sliding = false;
     marks.length = 0; smoke.length = 0; lastWheels = null; hitT = 0; stuckT = 0; holdT = 0; steerV = 0;
   }
@@ -388,9 +407,19 @@
     veil.classList.remove('off');
     countEl.classList.add('off');
   }
-  function finish(){
+  function finish(miss){
     st = 'done';
     bank();
+    if (miss > 0) {                       // 通過点を飛ばしている＝ショートカット
+      veilTitle.textContent = 'SHORTCUT';
+      veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
+        '<span class="big">' + fmt(time) + '</span><br>' +
+        '<span class="sub" style="color:#E0453A">タイム無効　関門を ' + miss + ' 箇所 くぐっていません</span>';
+      goBtn.textContent = 'もういちど';
+      veil.classList.remove('off');
+      countEl.classList.add('off');
+      return;
+    }
     var isNew = (best === 0 || time < best);
     if (isNew) { best = time; saveBest(); }
     veilTitle.textContent = 'GOAL';
@@ -572,8 +601,10 @@
       if (sm.life <= 0) smoke.splice(s,1);
     }
 
-    // ゴール
-    if (idx >= TRACK.length - 3) finish();
+    checkGate();
+
+    // ゴール（関門を全部くぐっているか確認する）
+    if (idx >= TRACK.length - 3) finish(GATES.length - nextGate);
 
     // 画面の追従（速度のぶんだけ先を見る）
     var tx = car.x + car.vx*0.42 - W/2;
