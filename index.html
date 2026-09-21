@@ -47,13 +47,23 @@
 
     .games{display:flex;flex-direction:column;gap:16px;margin:0 0 40px;padding:0;list-style:none}
     .game{
-      display:block;text-decoration:none;color:inherit;
+      display:flex;gap:16px;align-items:flex-start;
+      text-decoration:none;color:inherit;
       background:var(--card);border:1px solid var(--line);
       box-shadow:var(--shadow);
       padding:20px 22px;
       transition:transform .14s ease, border-color .14s ease;
     }
     .game:hover,.game:focus-visible{transform:translateY(-2px);border-color:var(--accent);outline:none}
+    .shot{
+      flex:0 0 auto;width:104px;height:auto;display:block;
+      border:1px solid var(--line);background:#0B0C10;
+    }
+    .game .body{min-width:0}
+    @media (max-width:380px){
+      .game{gap:12px}
+      .shot{width:84px}
+    }
     .game h2{
       margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:.14em;
       display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
@@ -83,29 +93,38 @@
     <ul class="games">
       <li>
         <a class="game" href="suminagashi/">
-          <h2>墨流し <span class="en">SUMINAGASHI</span></h2>
-          <p>和紙に墨が散る見た目の避けゲー。当たらずに、ぎりぎりでかすめるほど点が伸びます。</p>
-          <div class="how"><b>操作</b>　指でなぞる／マウスを動かす　・　右クリックか Space で必殺技</div>
+          <img class="shot" src="shots/suminagashi.png" alt="墨流しの画面。和紙の上に墨の弾が散り、赤い自機が避けている" width="460" height="740" loading="lazy">
+          <div class="body">
+            <h2>墨流し <span class="en">SUMINAGASHI</span></h2>
+            <p>和紙に墨が散る見た目の避けゲー。当たらずに、ぎりぎりでかすめるほど点が伸びます。</p>
+            <div class="how"><b>操作</b>　指でなぞる／マウスを動かす　・　右クリックか Space で必殺技</div>
+          </div>
         </a>
       </li>
       <li>
         <a class="game" href="tou-to-ido/">
-          <h2>塔と井戸 <span class="en">TOWER &amp; WELL</span></h2>
-          <p>ファミコン風のドット絵で2本立て。塔をひたすらのぼるか、井戸をひたすらおりるか。</p>
-          <div class="how"><b>操作</b>　塔＝クリックでジャンプのみ　・　井戸＝左右キー（スマホは画面の左右）</div>
+          <img class="shot" src="shots/tou-to-ido.png" alt="塔と井戸の画面。夜空にレンガの足場が並び、ドット絵の人が跳んでいる" width="460" height="740" loading="lazy">
+          <div class="body">
+            <h2>塔と井戸 <span class="en">TOWER &amp; WELL</span></h2>
+            <p>ファミコン風のドット絵で2本立て。塔をひたすらのぼるか、井戸をひたすらおりるか。</p>
+            <div class="how"><b>操作</b>　塔＝クリックでジャンプのみ　・　井戸＝左右キー（スマホは画面の左右）</div>
+          </div>
         </a>
       </li>
       <li>
         <a class="game" href="kuroi-wadachi/">
-          <h2>黒い轍 <span class="en">BLACK MARKS</span></h2>
-          <p>夜の峠のドリフトタイムアタック。ブレーキは無く、滑らせて速度を落とす。滑った跡は路面に黒く残る。コースは3本。</p>
-          <div class="how"><b>操作</b>　左右キーでハンドルのみ（スマホは画面の左右）　・　アクセルは自動</div>
+          <img class="shot" src="shots/kuroi-wadachi.png" alt="黒い轍の画面。ヘアピンをドリフトで抜ける車と、路面に残った黒い轍" width="460" height="740" loading="lazy">
+          <div class="body">
+            <h2>黒い轍 <span class="en">BLACK MARKS</span></h2>
+            <p>夜の峠のドリフトタイムアタック。ブレーキは無く、滑らせて速度を落とす。滑った跡は路面に黒く残る。コースは3本。</p>
+            <div class="how"><b>操作</b>　左右キーでハンドルのみ（スマホは画面の左右）　・　アクセルは自動</div>
+          </div>
         </a>
       </li>
     </ul>
 
     <footer>
-      <p>どちらもHTMLファイル1つで動いています。得点はお使いのブラウザにだけ残り、どこにも送信されません。</p>
+      <p>どれもHTMLファイル1つで動いています。得点はお使いのブラウザにだけ残り、どこにも送信されません。</p>
       <p>音の出るゲームがあります（画面内で切り替えできます）。</p>
     </footer>
   </div>
