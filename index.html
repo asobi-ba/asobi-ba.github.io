@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ブラウザゲーム置き場</title>
+  <meta name="description" content="インストール不要、リンクを開くだけで遊べる自作のブラウザゲーム。">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+  <style>
+    :root{
+      color-scheme: light;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      --bg:#E7E1D3;
+      --ink:#221F1A;
+      --dim:#6C6555;
+      --card:#F6F2E7;
+      --line:rgba(34,31,26,.16);
+      --accent:#B23A1E;
+      --shadow:0 10px 26px rgba(60,48,28,.18);
+    }
+    @media (prefers-color-scheme: dark){
+      :root:not([data-theme="light"]){
+        --bg:#16151A; --ink:#EDE7D9; --dim:#918A79; --card:#211F26;
+        --line:rgba(237,231,217,.16); --shadow:0 10px 30px rgba(0,0,0,.55);
+      }
+    }
+    :root[data-theme="dark"]{
+      --bg:#16151A; --ink:#EDE7D9; --dim:#918A79; --card:#211F26;
+      --line:rgba(237,231,217,.16); --shadow:0 10px 30px rgba(0,0,0,.55);
+    }
+
+    body{
+      margin:0;background:var(--bg);color:var(--ink);
+      font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',system-ui,sans-serif;
+      line-height:1.75;
+    }
+    .wrap{max-width:660px;margin:0 auto;padding:44px 16px 64px}
+
+    header{margin-bottom:34px}
+    h1{
+      margin:0 0 6px;font-size:clamp(23px,6vw,31px);font-weight:700;
+      letter-spacing:.06em;text-wrap:balance;
+    }
+    header p{margin:0;color:var(--dim);font-size:13.5px}
+
+    .games{display:flex;flex-direction:column;gap:16px;margin:0 0 40px;padding:0;list-style:none}
+    .game{
+      display:block;text-decoration:none;color:inherit;
+      background:var(--card);border:1px solid var(--line);
+      box-shadow:var(--shadow);
+      padding:20px 22px;
+      transition:transform .14s ease, border-color .14s ease;
+    }
+    .game:hover,.game:focus-visible{transform:translateY(-2px);border-color:var(--accent);outline:none}
+    .game h2{
+      margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:.14em;
+      display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+    }
+    .game .en{
+      font-family:'DotGothic16',monospace;font-size:10px;letter-spacing:.2em;
+      color:var(--accent);
+    }
+    .game p{margin:0;font-size:13.5px;color:var(--dim)}
+    .game .how{
+      margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);
+      font-size:12px;color:var(--dim);
+    }
+    .game .how b{color:var(--ink);font-weight:500}
+
+    footer{border-top:1px solid var(--line);padding-top:16px;font-size:12px;color:var(--dim)}
+    footer p{margin:0 0 6px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>ブラウザゲーム置き場</h1>
+      <p>インストール不要。リンクを開くだけで遊べます。スマホでも動きます。</p>
+    </header>
+
+    <ul class="games">
+      <li>
+        <a class="game" href="suminagashi/">
+          <h2>墨流し <span class="en">SUMINAGASHI</span></h2>
+          <p>和紙に墨が散る見た目の避けゲー。当たらずに、ぎりぎりでかすめるほど点が伸びます。</p>
+          <div class="how"><b>操作</b>　指でなぞる／マウスを動かす　・　右クリックか Space で必殺技</div>
+        </a>
+      </li>
+      <li>
+        <a class="game" href="tou-to-ido/">
+          <h2>塔と井戸 <span class="en">TOWER &amp; WELL</span></h2>
+          <p>ファミコン風のドット絵で2本立て。塔をひたすらのぼるか、井戸をひたすらおりるか。</p>
+          <div class="how"><b>操作</b>　塔＝クリックでジャンプのみ　・　井戸＝左右キー（スマホは画面の左右）</div>
+        </a>
+      </li>
+    </ul>
+
+    <footer>
+      <p>どちらもHTMLファイル1つで動いています。得点はお使いのブラウザにだけ残り、どこにも送信されません。</p>
+      <p>音の出るゲームがあります（画面内で切り替えできます）。</p>
+    </footer>
+  </div>
+</body>
+</html>

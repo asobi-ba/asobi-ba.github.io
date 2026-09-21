@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="和紙に墨が散る見た目の避けゲー。弾をぎりぎりでかすめるほど点が伸びる。">
+  <style>
+    /* 単体のページとして成立させるための最低限の土台 */
+    :root{
+      color-scheme: light;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#faf9f7; }
+    img{ max-width:100%; }
+    [hidden]{ display:none !important; }
+  </style>
+<title>墨流し</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+  :root{
+    --desk:#DCD2BD;
+    --desk-ink:#2B2620;
+    --desk-dim:#6E6455;
+    --sheet:#EFE7D6;
+    --sumi:#17140F;
+    --shu:#C0391E;
+    --ai:#27496B;
+    --rule:rgba(23,20,15,.16);
+    --sheet-shadow:0 16px 38px rgba(48,38,22,.28);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --desk:#151210;
+      --desk-ink:#EDE4D2;
+      --desk-dim:#978C79;
+      --rule:rgba(237,228,210,.18);
+      --sheet-shadow:0 16px 44px rgba(0,0,0,.65);
+    }
+  }
+  :root[data-theme="dark"]{
+    --desk:#151210;
+    --desk-ink:#EDE4D2;
+    --desk-dim:#978C79;
+    --rule:rgba(237,228,210,.18);
+    --sheet-shadow:0 16px 44px rgba(0,0,0,.65);
+  }
+
+  html,body{height:100%}
+  body{
+    background:var(--desk);
+    color:var(--desk-ink);
+    font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',system-ui,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .page{
+    height:100%;
+    box-sizing:border-box;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+    padding:12px 16px 16px;
+  }
+
+  .masthead{display:flex;align-items:center;gap:12px;flex:0 0 auto}
+  .seal{
+    font-family:'Shippori Mincho',serif;font-weight:700;
+    width:30px;height:30px;display:grid;place-items:center;
+    background:var(--shu);color:var(--sheet);
+    font-size:17px;line-height:1;border-radius:2px;
+    box-shadow:0 1px 0 rgba(0,0,0,.2);
+  }
+  .masthead h1{
+    margin:0;
+    font-family:'Shippori Mincho',serif;font-weight:700;
+    font-size:clamp(19px,5.2vw,25px);
+    letter-spacing:.34em;text-indent:.34em;
+    text-wrap:balance;
+  }
+  .masthead .sub{margin:0;font-size:11.5px;color:var(--desk-dim);letter-spacing:.06em}
+
+  .stage{flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:center;justify-content:center}
+  .sheet{
+    position:relative;
+    width:300px;height:457px;      /* 起動時に画面の大きさから計算して上書きする */
+    background:var(--sheet);
+    border:1px solid rgba(23,20,15,.22);
+    box-shadow:var(--sheet-shadow);
+    overflow:hidden;
+  }
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+  .grain{
+    position:absolute;inset:0;pointer-events:none;
+    mix-blend-mode:multiply;opacity:.6;
+    background-image:
+      radial-gradient(circle at 22% 34%, rgba(122,106,78,.20) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 68% 61%, rgba(122,106,78,.16) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 44% 86%, rgba(122,106,78,.13) 0 1px, transparent 1.6px);
+    background-size:37px 43px,53px 47px,29px 31px;
+    box-shadow:inset 0 0 70px rgba(104,86,56,.22);
+  }
+
+  /* 上の表示 */
+  .hud{
+    position:absolute;left:0;right:0;top:0;
+    display:flex;align-items:flex-start;gap:10px;
+    padding:8px 10px 0;
+    pointer-events:none;color:var(--sumi);
+  }
+  .hud .grp{display:flex;flex-direction:column;gap:1px}
+  .hud .lbl{font-size:9px;letter-spacing:.22em;opacity:.55}
+  .hud .val{
+    font-family:'Shippori Mincho',serif;font-weight:700;
+    font-variant-numeric:tabular-nums;line-height:1;
+  }
+  .hud .score .val{font-size:23px}
+  .hud .val.sm{font-size:14px}
+  .hud .mult{color:var(--ai)}
+  .hud .spacer{flex:1}
+  .hud .right{text-align:right}
+  .dots{display:flex;gap:4px;justify-content:flex-end;padding-top:3px}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--shu);display:block}
+  .dots i.off{background:transparent;box-shadow:inset 0 0 0 1px rgba(23,20,15,.3)}
+
+  .gauge{
+    position:absolute;left:10px;right:10px;top:62px;height:2px;
+    background:rgba(23,20,15,.14);pointer-events:none;
+  }
+  .gauge i{display:block;height:100%;width:0%;background:var(--ai);transition:width .1s linear}
+  .gauge.full i{background:var(--shu)}
+
+  /* 墨流しボタン */
+  .bomb{
+    position:absolute;right:12px;bottom:12px;
+    width:60px;height:60px;border-radius:50%;
+    background:transparent;color:var(--sumi);
+    border:1.5px solid rgba(23,20,15,.35);
+    font-family:'Shippori Mincho',serif;font-weight:700;font-size:21px;
+    opacity:.32;cursor:pointer;
+    display:grid;place-items:center;
+    transition:opacity .18s ease,border-color .18s ease,transform .1s ease;
+  }
+  .bomb.ready{opacity:1;border-color:var(--shu);color:var(--shu);animation:pulse 1.6s ease-in-out infinite}
+  .bomb:active{transform:scale(.92)}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,30,.34)}50%{box-shadow:0 0 0 9px rgba(192,57,30,0)}}
+
+  /* かぶせ画面 */
+  .veil{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;padding:24px;box-sizing:border-box;text-align:center;
+    background:rgba(239,231,214,.9);color:var(--sumi);
+  }
+  .veil.off{display:none}
+  .veil .big{
+    margin:0;font-family:'Shippori Mincho',serif;font-weight:700;
+    font-size:clamp(30px,10vw,44px);letter-spacing:.3em;text-indent:.3em;line-height:1.1;
+  }
+  .veil p{margin:0;font-size:12.5px;line-height:1.9;color:rgba(23,20,15,.72);max-width:26em}
+  .veil .rules{
+    display:flex;flex-direction:column;gap:5px;
+    font-size:12px;line-height:1.6;text-align:left;
+  }
+  .veil .rules b{font-weight:700;color:var(--shu)}
+  .veil .final{
+    font-family:'Shippori Mincho',serif;font-weight:700;
+    font-variant-numeric:tabular-nums;font-size:34px;line-height:1;
+  }
+  .veil .note{font-size:11px;letter-spacing:.14em;color:var(--ai)}
+  .go{
+    font-family:'Shippori Mincho',serif;font-weight:700;font-size:15px;
+    letter-spacing:.24em;text-indent:.24em;
+    padding:11px 26px;cursor:pointer;
+    color:var(--sheet);background:var(--sumi);border:none;border-radius:1px;
+  }
+  .go:hover{background:var(--shu)}
+  .go:focus-visible,.bomb:focus-visible{outline:2px solid var(--ai);outline-offset:3px}
+
+  .legend{
+    flex:0 0 auto;width:100%;max-width:430px;
+    border-top:1px solid var(--rule);padding-top:8px;
+    display:flex;flex-wrap:wrap;gap:4px 16px;
+    font-size:11px;color:var(--desk-dim);line-height:1.5;
+  }
+  .legend span{white-space:nowrap}
+  @media (max-height:600px){
+    .masthead .sub{display:none}
+    .legend{font-size:10px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .bomb.ready{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="masthead">
+    <span class="seal" aria-hidden="true">墨</span>
+    <div>
+      <h1>墨流し</h1>
+      <p class="sub">当たらず、かすらせる。和紙の上の避けゲー</p>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="sheet" id="sheet">
+      <canvas id="game" aria-label="墨流し ゲーム画面"></canvas>
+      <div class="grain" aria-hidden="true"></div>
+
+      <div class="hud" id="hud">
+        <div class="grp score">
+          <span class="lbl">テン</span>
+          <span class="val" id="score">0</span>
+        </div>
+        <div class="grp">
+          <span class="lbl">バイ</span>
+          <span class="val sm mult" id="mult">×1</span>
+        </div>
+        <div class="grp">
+          <span class="lbl">カスリ</span>
+          <span class="val sm" id="graze">0</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="grp right">
+          <span class="lbl">サイコウ</span>
+          <span class="val sm" id="high">0</span>
+          <div class="dots" id="lives"></div>
+        </div>
+      </div>
+      <div class="gauge" id="gauge"><i id="gaugeBar"></i></div>
+
+      <button class="bomb" id="bombBtn" type="button" title="墨流し（Space）">墨</button>
+
+      <div class="veil" id="veil">
+        <h2 class="big" id="veilTitle">墨流し</h2>
+        <div class="rules" id="veilBody">
+          <div>黒い墨に<b>当たると</b>ひとつ失う。残りは三つ。</div>
+          <div>ぎりぎりをかすめると<b>かすり</b>が増え、点の倍率が上がる。</div>
+          <div>敵を散らすかかすると下の線が溜まる。満ちたら<b>墨</b>で画面ごと散らせる。</div>
+        </div>
+        <p id="veilNote">PCはマウスを動かすだけ。右クリックで墨。スマホは指でなぞる。</p>
+        <button class="go" id="goBtn" type="button">はじめる</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span>指でなぞって移動</span>
+    <span>矢印キー / WASD</span>
+    <span>Shift＝低速</span>
+    <span>右クリック / Space＝墨流し</span>
+    <span>P＝休み</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var cv = document.getElementById('game');
+  var ctx = cv.getContext('2d');
+  var W = 420, H = 640;
+
+  var PAPER = '#EFE7D6', SUMI = '#17140F', SHU = '#C0391E', AI = '#27496B';
+  var reduced = false;
+  try { reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
+
+  var elScore = document.getElementById('score');
+  var elMult  = document.getElementById('mult');
+  var elGraze = document.getElementById('graze');
+  var elHigh  = document.getElementById('high');
+  var elLives = document.getElementById('lives');
+  var elGauge = document.getElementById('gauge');
+  var elBar   = document.getElementById('gaugeBar');
+  var elBomb  = document.getElementById('bombBtn');
+  var veil    = document.getElementById('veil');
+  var veilTitle = document.getElementById('veilTitle');
+  var veilBody  = document.getElementById('veilBody');
+  var veilNote  = document.getElementById('veilNote');
+  var goBtn   = document.getElementById('goBtn');
+
+  // ---------- 画面の大きさ（ブラウザ任せにせず自分で決める） ----------
+  var stage = document.getElementById('stage');
+  var sheet = document.getElementById('sheet');
+  var dpr = 1, scale = 1, lastW = 0, lastH = 0;
+
+  function layout(){
+    var st = stage.getBoundingClientRect();
+    var availW = Math.min(st.width  > 0 ? st.width  : 360, 430);
+    var availH = st.height > 0 ? st.height : 560;
+    var w = availW, h = w * H / W;
+    if (h > availH) { h = availH; w = h * W / H; }
+    if (!(w > 40)) { w = 300; h = w * H / W; }
+    w = Math.round(w); h = Math.round(h);
+    if (w === lastW && h === lastH) return;
+    lastW = w; lastH = h;
+    sheet.style.width  = w + 'px';
+    sheet.style.height = h + 'px';
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width  = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    scale = w / W;
+    ctx.setTransform(scale*dpr, 0, 0, scale*dpr, 0, 0);
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(0, 0, W, H);
+  }
+  var resize = layout;
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', layout);
+  try { new ResizeObserver(layout).observe(stage); } catch(e){}
+
+  // ---------- 状態 ----------
+  var mode = 'title';           // title / play / over / pause
+  var score = 0, high = 0, lives = 3, graze = 0, gauge = 0;
+  var time = 0, level = 1, shake = 0, nextBoss = 42, spawnT = 1.4;
+  var bossAlive = false;
+
+  var player = { x: W/2, y: H-110, r: 3.2, grazeR: 25, inv: 0, fire: 0, trail: [] };
+  var bullets = [], shots = [], enemies = [], parts = [], waves = [];
+
+  function mult(){ return Math.min(8, 1 + Math.floor(graze / 20)); }
+
+  function nz(i){ var s = Math.sin(i * 127.1) * 43758.5453; return s - Math.floor(s); }
+
+  // ---------- 最高点の保存 ----------
+  function loadHigh(){
+    try { var v = localStorage.getItem('suminagashi.high'); if (v) high = parseInt(v, 10) || 0; } catch(e){}
+  }
+  function saveHigh(){
+    try { localStorage.setItem('suminagashi.high', String(high)); } catch(e){}
+  }
+
+  // ---------- 入力 ----------
+  var keys = {};
+  window.addEventListener('keydown', function(e){
+    var k = e.key;
+    if (k === ' ' || k === 'ArrowUp' || k === 'ArrowDown' || k === 'ArrowLeft' || k === 'ArrowRight') e.preventDefault();
+    keys[k] = true;
+    if (k === ' ' || k === 'Enter') {
+      if (mode === 'title' || mode === 'over') { startGame(); return; }
+      if (mode === 'pause') { setPause(false); return; }
+      if (k === ' ') doBomb();
+    }
+    if (k === 'p' || k === 'P') { if (mode === 'play') setPause(true); else if (mode === 'pause') setPause(false); }
+  });
+  window.addEventListener('keyup', function(e){ keys[e.key] = false; });
+  window.addEventListener('blur', function(){ keys = {}; });
+  document.addEventListener('visibilitychange', function(){ if (document.hidden && mode === 'play') setPause(true); });
+
+  function toWorld(e){
+    var r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+  }
+  // 右クリック＝墨流し（PC）。ブラウザのメニューは出さない
+  sheet.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+  sheet.addEventListener('pointerdown', function(e){
+    if (e.button === 2) { e.preventDefault(); doBomb(); }
+  });
+
+  var drag = null;
+  cv.addEventListener('pointerdown', function(e){
+    if (e.button === 2) return;          // 右クリックは移動に使わない
+    if (mode !== 'play') return;
+    try { cv.setPointerCapture(e.pointerId); } catch(err){}
+    var p = toWorld(e);
+    if (e.pointerType === 'mouse') { drag = { id: e.pointerId, dx: 0, dy: 0 }; movePlayer(p.x, p.y); }
+    else drag = { id: e.pointerId, dx: player.x - p.x, dy: player.y - p.y };
+  });
+  cv.addEventListener('pointermove', function(e){
+    if (mode !== 'play') return;
+    var p = toWorld(e);
+    if (e.pointerType === 'mouse') { movePlayer(p.x, p.y); return; }
+    if (!drag || drag.id !== e.pointerId) return;
+    movePlayer(p.x + drag.dx, p.y + drag.dy);
+  });
+  function endDrag(e){ if (drag && drag.id === e.pointerId) drag = null; }
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+
+  function movePlayer(x, y){
+    player.x = Math.max(8, Math.min(W-8, x));
+    player.y = Math.max(8, Math.min(H-8, y));
+  }
+
+  elBomb.addEventListener('click', function(){ doBomb(); });
+  goBtn.addEventListener('click', function(){ if (mode === 'pause') setPause(false); else startGame(); });
+
+  // ---------- 画面の切り替え ----------
+  function showVeil(title, bodyHTML, note, btn){
+    veilTitle.textContent = title;
+    veilBody.innerHTML = bodyHTML;
+    veilNote.textContent = note;
+    goBtn.textContent = btn;
+    veil.classList.remove('off');
+  }
+  function setPause(on){
+    if (on) { mode = 'pause'; showVeil('休', '', 'ひと呼吸。', 'つづける'); }
+    else { mode = 'play'; veil.classList.add('off'); last = 0; }
+  }
+  function startGame(){
+    mode = 'play';
+    score = 0; lives = 3; graze = 0; gauge = 0; time = 0; level = 1;
+    shake = 0; nextBoss = 42; spawnT = 1.2; bossAlive = false;
+    bullets.length = 0; shots.length = 0; enemies.length = 0; parts.length = 0; waves.length = 0;
+    player.x = W/2; player.y = H-110; player.inv = 1.4; player.fire = 0; player.trail.length = 0;
+    veil.classList.add('off');
+    last = 0;
+    ctx.fillStyle = PAPER; ctx.fillRect(0,0,W,H);
+  }
+  function gameOver(){
+    mode = 'over';
+    var isNew = score > high;
+    if (isNew) { high = score; saveHigh(); }
+    showVeil('終',
+      '<div class="final">' + score.toLocaleString('ja-JP') + '</div>' +
+      (isNew ? '<div class="note">サイコウ コウシン</div>' : '<div class="note">サイコウ ' + high.toLocaleString('ja-JP') + '</div>') +
+      '<div>かすり ' + graze + ' 回 / ' + Math.floor(time) + ' 秒</div>',
+      'かすりを稼ぐほど点は伸びる。', 'もう一度');
+  }
+
+  // ---------- 弾・敵 ----------
+  function shoot(x, y, ang, sp, r){
+    if (bullets.length > 340) bullets.shift();
+    bullets.push({ x:x, y:y, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp, r:r||3.6, g:false });
+  }
+  function aimAt(e){ return Math.atan2(player.y - e.y, player.x - e.x); }
+  function bspeed(){ return 104 + level * 7; }
+
+  function addEnemy(type, x){
+    var e = { type:type, x:x, y:-40, t:0, seed:Math.random()*100, fire:0.8, ang:Math.random()*6.28, flash:0, rot:0, spin:(Math.random()-.5)*0.8, acc:0, phase:0, pt:0 };
+    if (type === 'tsubu')   { e.hp = 3;  e.r = 11; e.vy = 74; e.pts = 100; e.gz = 2.5; }
+    if (type === 'shizuku') { e.hp = 6;  e.r = 16; e.vy = 70; e.ty = 100 + Math.random()*50; e.pts = 240; e.gz = 7; }
+    if (type === 'uzu')     { e.hp = 10; e.r = 19; e.vy = 62; e.ty = 130 + Math.random()*40; e.pts = 420; e.gz = 12; }
+    if (type === 'boss')    { e.hp = 58 + level*22; e.hpMax = e.hp; e.r = 44; e.vy = 46; e.ty = 128; e.pts = 3000; e.gz = 45; }
+    enemies.push(e);
+  }
+  function spawnWave(){
+    var roll = Math.random();
+    if (level >= 3 && roll < 0.2) addEnemy('uzu', 60 + Math.random()*(W-120));
+    else if (level >= 2 && roll < 0.5) addEnemy('shizuku', 60 + Math.random()*(W-120));
+    else {
+      var n = 3 + Math.min(4, level);
+      var x0 = 40 + Math.random()*(W-80-n*26);
+      for (var i=0;i<n;i++) {
+        var e = { type:'tsubu', x:x0+i*26, y:-40-i*26, t:0, seed:Math.random()*100, fire:0.8+i*0.2,
+                  ang:0, flash:0, rot:0, spin:(Math.random()-.5)*0.8, hp:3, r:11, vy:74, pts:100, gz:2.5 };
+        enemies.push(e);
+      }
+    }
+  }
+
+  function updateEnemy(e, dt){
+    e.t += dt; e.rot += e.spin * dt;
+    if (e.flash > 0) e.flash -= dt;
+    var bs = bspeed();
+
+    if (e.type === 'tsubu') {
+      e.y += e.vy * dt;
+      e.x += Math.sin(e.t*2.2 + e.seed) * 34 * dt;
+      e.fire -= dt;
+      if (e.fire <= 0 && e.y > 30 && e.y < H-140) { shoot(e.x, e.y, aimAt(e), bs, 3.6); e.fire = 1.5; }
+      if (e.y > H + 50) e.dead = true;
+
+    } else if (e.type === 'shizuku') {
+      if (e.y < e.ty) e.y += e.vy * dt;
+      else e.x += Math.cos(e.t*0.9 + e.seed) * 70 * dt;
+      e.fire -= dt;
+      if (e.fire <= 0 && e.y >= e.ty - 6) {
+        var a = aimAt(e);
+        for (var i=-2;i<=2;i++) shoot(e.x, e.y, a + i*0.26, bs*0.94, 3.8);
+        e.fire = 2.1;
+      }
+
+    } else if (e.type === 'uzu') {
+      if (e.y < e.ty) e.y += e.vy * dt;
+      else e.x += Math.sin(e.t*0.6 + e.seed) * 46 * dt;
+      if (e.y >= e.ty - 6) {
+        e.fire -= dt;
+        if (e.phase === 0) {
+          if (e.fire <= 0) { e.phase = 1; e.fire = 2.0; e.ang = aimAt(e); }
+        } else {
+          e.acc += dt;
+          while (e.acc > 0.1) {
+            e.acc -= 0.1;
+            shoot(e.x, e.y, e.ang, bs*0.9, 3.4);
+            shoot(e.x, e.y, e.ang + Math.PI, bs*0.9, 3.4);
+            e.ang += 0.46;
+          }
+          if (e.fire <= 0) { e.phase = 0; e.fire = 1.7; }
+        }
+      }
+
+    } else if (e.type === 'boss') {
+      if (e.y < e.ty) e.y += e.vy * dt;
+      else {
+        e.x += Math.cos(e.t*0.5) * 64 * dt;
+        e.pt += dt;
+        var ph = Math.floor(e.pt / 4.2) % 3;
+        if (ph !== e.phase) { e.phase = ph; e.fire = 0.5; e.acc = 0; e.ang = Math.random()*6.28; }
+        e.fire -= dt;
+        if (ph === 0) {                       // 輪
+          if (e.fire <= 0) {
+            var off = Math.random()*6.28;
+            for (var j=0;j<16;j++) shoot(e.x, e.y, off + j*Math.PI*2/16, bs*0.82, 4.2);
+            e.fire = 1.5;
+          }
+        } else if (ph === 1) {                // 狙い撃ち
+          if (e.fire <= 0) {
+            var a2 = aimAt(e);
+            for (var k=-1;k<=1;k++) shoot(e.x, e.y, a2 + k*0.13, bs*1.12, 3.6);
+            e.fire = 0.32;
+          }
+        } else {                              // 渦
+          e.acc += dt;
+          while (e.acc > 0.085) {
+            e.acc -= 0.085;
+            shoot(e.x, e.y, e.ang, bs*0.86, 3.6);
+            shoot(e.x, e.y, e.ang + Math.PI*2/3, bs*0.86, 3.6);
+            shoot(e.x, e.y, e.ang + Math.PI*4/3, bs*0.86, 3.6);
+            e.ang += 0.31;
+          }
+        }
+      }
+    }
+    if (e.x < e.r) { e.x = e.r; } if (e.x > W-e.r) { e.x = W-e.r; }
+  }
+
+  // ---------- 効果 ----------
+  function splat(x, y, n, col, sp){
+    if (reduced) n = Math.round(n * 0.4);
+    for (var i=0;i<n;i++){
+      var a = Math.random()*6.28, s = sp * (0.3 + Math.random());
+      parts.push({ x:x, y:y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, r:0.9+Math.random()*2.6, life:1, col:col });
+    }
+  }
+  function doBomb(){
+    if (mode !== 'play' || gauge < 100) return;
+    gauge = 0;
+    player.inv = Math.max(player.inv, 1.5);
+    shake = reduced ? 0 : 11;
+    waves.push({ x: player.x, y: player.y, r: 0 });
+    for (var i=0;i<bullets.length;i++){
+      score += 12 * mult();
+      if (i % 3 === 0) splat(bullets[i].x, bullets[i].y, 2, SUMI, 60);
+    }
+    bullets.length = 0;
+    for (var j=0;j<enemies.length;j++){
+      enemies[j].hp -= 26; enemies[j].flash = 0.2;
+      if (enemies[j].hp <= 0) killEnemy(enemies[j]);
+    }
+  }
+  function killEnemy(e){
+    if (e.dead) return;
+    e.dead = true;
+    score += e.pts * mult();
+    gauge = Math.min(100, gauge + (e.gz || 2.5));   // 倒してもゲージが溜まる
+    if (e.type === 'boss') { bossAlive = false; shake = reduced ? 0 : 14; }
+    splat(e.x, e.y, e.type === 'boss' ? 46 : 14, SUMI, e.type === 'boss' ? 190 : 130);
+  }
+  function hurt(){
+    if (player.inv > 0) return;
+    lives--;
+    player.inv = 2.2;
+    shake = reduced ? 0 : 13;
+    graze = Math.floor(graze * 0.5);
+    gauge = Math.max(0, gauge - 34);
+    splat(player.x, player.y, 26, SHU, 160);
+    for (var i=bullets.length-1;i>=0;i--){
+      var dx = bullets[i].x - player.x, dy = bullets[i].y - player.y;
+      if (dx*dx + dy*dy < 95*95) bullets.splice(i,1);
+    }
+    if (lives <= 0) gameOver();
+  }
+
+  // ---------- 1コマ分の計算 ----------
+  function step(dt){
+    if (mode === 'play') {
+      time += dt;
+      level = 1 + Math.floor(time / 25);
+
+      // 自機（キーボード）
+      var sp = (keys['Shift'] ? 150 : 305) * dt;
+      var kx = 0, ky = 0;
+      if (keys['ArrowLeft']  || keys['a'] || keys['A']) kx -= 1;
+      if (keys['ArrowRight'] || keys['d'] || keys['D']) kx += 1;
+      if (keys['ArrowUp']    || keys['w'] || keys['W']) ky -= 1;
+      if (keys['ArrowDown']  || keys['s'] || keys['S']) ky += 1;
+      if (kx || ky) {
+        var n = Math.hypot(kx, ky) || 1;
+        movePlayer(player.x + kx/n*sp, player.y + ky/n*sp);
+      }
+      if (player.inv > 0) player.inv -= dt;
+
+      player.trail.push({ x: player.x, y: player.y });
+      if (player.trail.length > 16) player.trail.shift();
+
+      // 自機の弾
+      player.fire -= dt;
+      if (player.fire <= 0) {
+        player.fire = 0.085;
+        shots.push({ x: player.x - 4, y: player.y - 8 });
+        shots.push({ x: player.x + 4, y: player.y - 8 });
+      }
+
+      // 敵の出現
+      if (!bossAlive) {
+        if (time >= nextBoss) { addEnemy('boss', W/2); bossAlive = true; nextBoss = time + 62; }
+        else {
+          spawnT -= dt;
+          if (spawnT <= 0) { spawnWave(); spawnT = Math.max(0.85, 2.5 - level*0.16); }
+        }
+      }
+    } else if (mode === 'title') {
+      // 見本として墨の粒がゆっくり降る
+      if (Math.random() < dt * 5) {
+        bullets.push({ x: Math.random()*W, y: -10, vx: (Math.random()-.5)*16, vy: 26 + Math.random()*28, r: 2.4 + Math.random()*3.4, g: false });
+      }
+    }
+
+    // 敵
+    for (var i=enemies.length-1;i>=0;i--){
+      var e = enemies[i];
+      if (mode === 'play') updateEnemy(e, dt);
+      if (e.dead || e.y > H + 60) {
+        if (e.type === 'boss') bossAlive = false;
+        enemies.splice(i,1);
+      }
+    }
+
+    // 自機の弾と当たり
+    for (var s=shots.length-1;s>=0;s--){
+      var sh = shots[s];
+      sh.y -= 640 * dt;
+      if (sh.y < -20) { shots.splice(s,1); continue; }
+      for (var q=0;q<enemies.length;q++){
+        var en = enemies[q];
+        var ddx = sh.x-en.x, ddy = sh.y-en.y;
+        if (ddx*ddx + ddy*ddy < en.r*en.r) {
+          en.hp -= 1; en.flash = 0.1;
+          splat(sh.x, sh.y, 1, SUMI, 40);
+          shots.splice(s,1);
+          if (en.hp <= 0) killEnemy(en);
+          break;
+        }
+      }
+    }
+
+    // 敵の弾・かすり・被弾
+    var gr2 = player.grazeR * player.grazeR;
+    for (var b=bullets.length-1;b>=0;b--){
+      var bu = bullets[b];
+      bu.x += bu.vx * dt; bu.y += bu.vy * dt;
+      if (bu.x < -30 || bu.x > W+30 || bu.y < -40 || bu.y > H+40) { bullets.splice(b,1); continue; }
+      if (mode !== 'play') continue;
+      var dx = bu.x - player.x, dy = bu.y - player.y, d2 = dx*dx + dy*dy;
+      var hitR = bu.r + player.r;
+      if (d2 < hitR*hitR) { bullets.splice(b,1); hurt(); continue; }
+      if (!bu.g && d2 < gr2 && player.inv <= 0) {
+        bu.g = true; graze++; score += mult();
+        gauge = Math.min(100, gauge + 1.7);
+        parts.push({ x:bu.x, y:bu.y, vx:0, vy:-18, r:1.6, life:1, col:AI });
+      }
+    }
+
+    // 敵本体と接触
+    if (mode === 'play' && player.inv <= 0) {
+      for (var z=0;z<enemies.length;z++){
+        var ez = enemies[z], ex = ez.x-player.x, ey = ez.y-player.y, rr = ez.r*0.62;
+        if (ex*ex + ey*ey < rr*rr) { hurt(); break; }
+      }
+    }
+
+    // 粒子・墨流しの輪
+    for (var p=parts.length-1;p>=0;p--){
+      var pa = parts[p];
+      pa.x += pa.vx*dt; pa.y += pa.vy*dt;
+      pa.vx *= 0.94; pa.vy = pa.vy*0.94 + 40*dt;
+      pa.life -= dt*1.5;
+      if (pa.life <= 0) parts.splice(p,1);
+    }
+    for (var v=waves.length-1;v>=0;v--){
+      waves[v].r += 900 * dt;
+      if (waves[v].r > 780) waves.splice(v,1);
+    }
+    if (shake > 0) shake = Math.max(0, shake - dt*44);
+  }
+
+  // ---------- 描画 ----------
+  function blob(x, y, r, seed, rot, alpha){
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(rot);
+    ctx.fillStyle = SUMI;
+    for (var i=0;i<6;i++){
+      var a = (i/6) * Math.PI * 2;
+      var rr = r * (0.48 + 0.34 * nz(seed + i));
+      ctx.globalAlpha = alpha * 0.45;
+      ctx.beginPath(); ctx.arc(Math.cos(a)*r*0.44, Math.sin(a)*r*0.44, rr, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = alpha;
+    ctx.beginPath(); ctx.arc(0, 0, r*0.6, 0, 7); ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function draw(){
+    ctx.setTransform(scale*dpr, 0, 0, scale*dpr, 0, 0);
+    if (shake > 0) ctx.translate((Math.random()-.5)*shake, (Math.random()-.5)*shake);
+
+    // 残像（墨が紙にじわっと消える感じ）
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(239,231,214,0.34)';
+    ctx.fillRect(-20, -20, W+40, H+40);
+
+    // 墨流しの輪
+    for (var v=0;v<waves.length;v++){
+      var wv = waves[v], t = wv.r / 780;
+      ctx.globalAlpha = (1 - t) * 0.5;
+      ctx.strokeStyle = SUMI;
+      ctx.lineWidth = 26 * (1 - t) + 1;
+      ctx.beginPath(); ctx.arc(wv.x, wv.y, wv.r, 0, 7); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // 敵
+    for (var i=0;i<enemies.length;i++){
+      var e = enemies[i];
+      blob(e.x, e.y, e.r, e.seed, e.rot, 0.88);
+      if (e.flash > 0) {
+        ctx.globalAlpha = Math.min(0.6, e.flash*4);
+        ctx.fillStyle = SHU;
+        ctx.beginPath(); ctx.arc(e.x, e.y, e.r*0.62, 0, 7); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      if (e.type === 'boss' && e.hpMax) {
+        var w = (W-40) * Math.max(0, e.hp/e.hpMax);
+        ctx.fillStyle = 'rgba(23,20,15,0.16)'; ctx.fillRect(20, H-16, W-40, 3);
+        ctx.fillStyle = SHU; ctx.fillRect(20, H-16, w, 3);
+      }
+    }
+
+    // 自機の弾
+    ctx.strokeStyle = SUMI; ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.78; ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    for (var s=0;s<shots.length;s++){ ctx.moveTo(shots[s].x, shots[s].y); ctx.lineTo(shots[s].x, shots[s].y+13); }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // 敵の弾（進む向きに少し伸ばす＝墨の尾）
+    for (var b=0;b<bullets.length;b++){
+      var bu = bullets[b];
+      var ang = Math.atan2(bu.vy, bu.vx);
+      ctx.save();
+      ctx.translate(bu.x, bu.y); ctx.rotate(ang); ctx.scale(1.45, 1);
+      ctx.fillStyle = bu.g ? AI : SUMI;
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath(); ctx.arc(0, 0, bu.r*2.3, 0, 7); ctx.fill();
+      ctx.globalAlpha = 0.92;
+      ctx.beginPath(); ctx.arc(0, 0, bu.r, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    // 粒子
+    for (var p=0;p<parts.length;p++){
+      var pa = parts[p];
+      ctx.globalAlpha = Math.max(0, pa.life) * 0.8;
+      ctx.fillStyle = pa.col;
+      ctx.beginPath(); ctx.arc(pa.x, pa.y, pa.r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 自機
+    if (mode === 'play' || mode === 'pause') {
+      var blink = player.inv > 0 && Math.floor(player.inv*14) % 2 === 0;
+      // 筆の尾
+      ctx.fillStyle = SHU;
+      for (var t2=0;t2<player.trail.length;t2++){
+        var tr = player.trail[t2], f = t2/player.trail.length;
+        ctx.globalAlpha = f * 0.16;
+        ctx.beginPath(); ctx.arc(tr.x, tr.y, 1 + f*3.4, 0, 7); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      // かすりの輪
+      ctx.strokeStyle = AI; ctx.globalAlpha = 0.26; ctx.lineWidth = 1;
+      ctx.setLineDash([3, 5]); ctx.lineDashOffset = -time * 14;
+      ctx.beginPath(); ctx.arc(player.x, player.y, player.grazeR, 0, 7); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+      if (!blink) {
+        ctx.fillStyle = SHU;
+        ctx.beginPath(); ctx.arc(player.x, player.y, 5.4, 0, 7); ctx.fill();
+        ctx.fillStyle = PAPER;
+        ctx.beginPath(); ctx.arc(player.x, player.y, 1.7, 0, 7); ctx.fill();
+      }
+    }
+  }
+
+  // ---------- 上の表示 ----------
+  var prev = {};
+  function syncHUD(){
+    if (prev.score !== score) { elScore.textContent = score.toLocaleString('ja-JP'); prev.score = score; }
+    var m = mult();
+    if (prev.mult !== m) { elMult.textContent = '×' + m; prev.mult = m; }
+    if (prev.graze !== graze) { elGraze.textContent = graze; prev.graze = graze; }
+    if (prev.high !== high) { elHigh.textContent = high.toLocaleString('ja-JP'); prev.high = high; }
+    if (prev.lives !== lives) {
+      elLives.innerHTML = '';
+      for (var i=0;i<3;i++){
+        var d = document.createElement('i');
+        if (i >= lives) d.className = 'off';
+        elLives.appendChild(d);
+      }
+      prev.lives = lives;
+    }
+    var g = Math.round(gauge);
+    if (prev.gauge !== g) {
+      elBar.style.width = g + '%';
+      elGauge.classList.toggle('full', g >= 100);
+      elBomb.classList.toggle('ready', g >= 100 && mode === 'play');
+      prev.gauge = g;
+    }
+  }
+
+  // ---------- まわす ----------
+  var last = 0, acc = 0;
+  function frame(now){
+    requestAnimationFrame(frame);
+    if (!last) { last = now; return; }
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (mode !== 'pause') {
+      acc += dt;
+      var guard = 0;
+      while (acc >= 1/60 && guard < 6) { step(1/60); acc -= 1/60; guard++; }
+      if (guard >= 6) acc = 0;
+      draw();
+    }
+    syncHUD();
+  }
+
+  // ---------- 起動 ----------
+  function boot(saved){
+    loadHigh();
+    if (saved && saved.high > high) { high = saved.high; saveHigh(); }
+    resize();
+    syncHUD();
+    requestAnimationFrame(frame);
+  }
+  try {
+    var hot = window.claude && window.claude.hot;
+    if (hot && hot.snapshot) hot.snapshot(function(){ return { high: high }; });
+    if (hot && hot.ready) hot.ready(boot);
+    else boot((hot && hot.data) || {});
+  } catch(e){ boot({}); }
+})();
+</script>
+</body>
+</html>

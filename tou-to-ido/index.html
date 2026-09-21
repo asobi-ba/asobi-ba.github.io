@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="ファミコン風ドット絵の2本立て。塔をひたすらのぼるか、井戸をひたすらおりるか。">
+  <style>
+    /* 単体のページとして成立させるための最低限の土台 */
+    :root{
+      color-scheme: light;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#faf9f7; }
+    img{ max-width:100%; }
+    [hidden]{ display:none !important; }
+  </style>
+<title>塔と井戸</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Press+Start+2P&display=swap">
+<style>
+  :root{
+    --room:#C8C4B4;          /* 机の上（明るいとき） */
+    --room-ink:#22201C;
+    --room-dim:#6B6559;
+    --cab:#2A2A34;           /* 筐体 */
+    --cab-hi:#4A4A5A;
+    --bar:#101018;
+    --nes-w:#FCFCFC;
+    --nes-r:#D82800;
+    --nes-y:#F8B800;
+    --nes-g:#58D854;
+    --nes-b:#2038EC;
+    --rule:rgba(34,32,28,.2);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --room:#14141A; --room-ink:#E8E4D8; --room-dim:#8C8678; --rule:rgba(232,228,216,.18);
+    }
+  }
+  :root[data-theme="dark"]{
+    --room:#14141A; --room-ink:#E8E4D8; --room-dim:#8C8678; --rule:rgba(232,228,216,.18);
+  }
+
+  html,body{height:100%}
+  body{
+    background:var(--room);
+    color:var(--room-ink);
+    font-family:'DotGothic16','Hiragino Kaku Gothic ProN',system-ui,sans-serif;
+  }
+  .page{
+    height:100%;box-sizing:border-box;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    padding:10px 16px 14px;
+  }
+
+  .masthead{text-align:center;flex:0 0 auto}
+  .masthead h1{
+    margin:0;font-size:clamp(18px,5vw,24px);
+    letter-spacing:.3em;text-indent:.3em;text-wrap:balance;
+  }
+  .masthead p{margin:2px 0 0;font-size:11px;color:var(--room-dim);letter-spacing:.08em}
+
+  .stage{flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:center;justify-content:center}
+  .console{display:inline-flex;flex-direction:column;gap:6px;max-width:100%}
+
+  /* もーど切り替え */
+  .tabs{display:flex;gap:6px}
+  .tab{
+    flex:1 1 0;
+    font-family:'DotGothic16',sans-serif;font-size:13px;letter-spacing:.14em;
+    padding:7px 4px;cursor:pointer;
+    color:var(--room-ink);background:transparent;
+    border:2px solid var(--rule);border-radius:0;
+  }
+  .tab.on{background:var(--cab);color:var(--nes-y);border-color:var(--cab)}
+  .tab:focus-visible,.pill:focus-visible,.go:focus-visible{outline:2px solid var(--nes-b);outline-offset:2px}
+
+  /* 上の表示（ファミコンのステータス帯） */
+  .bar{
+    display:flex;align-items:center;gap:10px;
+    background:var(--bar);color:var(--nes-w);
+    padding:6px 8px;border:2px solid var(--cab);
+    font-family:'Press Start 2P',monospace;font-size:8px;line-height:1.6;
+  }
+  .bar .k{color:#8C8CA8;font-size:7px;display:block;letter-spacing:.06em}
+  .bar .v{font-size:11px;letter-spacing:.04em}
+  .bar .sp{flex:1}
+  .hearts{display:flex;gap:3px}
+  .hearts.off{display:none}
+  .hearts i{
+    width:9px;height:9px;display:block;background:var(--nes-r);
+    clip-path:polygon(50% 100%,0 40%,20% 0,50% 25%,80% 0,100% 40%);
+  }
+  .hearts i.off{background:#4A4A5A}
+  .pill{
+    font-family:'Press Start 2P',monospace;font-size:8px;
+    color:var(--nes-w);background:#2A2A34;border:1px solid #4A4A5A;
+    padding:4px 6px;cursor:pointer;
+  }
+  .pill.off{color:#6C6C80}
+
+  /* 画面 */
+  .cab{position:relative;display:inline-block;line-height:0;border:4px solid var(--cab);background:#000;max-width:100%}
+  canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none}
+  .scan{
+    position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(to bottom,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);
+    opacity:.55;
+  }
+
+  .veil{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:12px;padding:18px;box-sizing:border-box;text-align:center;
+    background:rgba(8,8,16,.86);color:var(--nes-w);line-height:1.7;
+  }
+  .veil.off{display:none}
+  .veil h2{
+    margin:0;font-family:'Press Start 2P',monospace;
+    font-size:clamp(13px,4.4vw,18px);color:var(--nes-y);line-height:1.5;
+  }
+  .veil p{margin:0;font-size:12px;max-width:22em;color:#D8D8E8}
+  .veil .rec{font-family:'Press Start 2P',monospace;font-size:20px;color:var(--nes-w)}
+  .veil .new{font-family:'Press Start 2P',monospace;font-size:8px;color:var(--nes-g)}
+  .go{
+    font-family:'DotGothic16',sans-serif;font-size:14px;letter-spacing:.2em;text-indent:.2em;
+    padding:9px 22px;cursor:pointer;
+    color:#101018;background:var(--nes-y);border:none;
+  }
+  .go:hover{background:var(--nes-w)}
+
+  .legend{
+    flex:0 0 auto;width:100%;max-width:520px;
+    border-top:1px solid var(--rule);padding-top:7px;
+    display:flex;flex-wrap:wrap;gap:3px 14px;
+    font-size:11px;color:var(--room-dim);
+  }
+  .legend span{white-space:nowrap}
+  @media (max-height:620px){ .masthead p{display:none} }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="masthead">
+    <h1>塔と井戸</h1>
+    <p>のぼるか、おりるか。どちらも終わりはない</p>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="console" id="console">
+      <div class="tabs">
+        <button class="tab on" id="tabTower" type="button">塔をのぼる</button>
+        <button class="tab"    id="tabWell"  type="button">井戸をおりる</button>
+      </div>
+
+      <div class="bar">
+        <div><span class="k" id="kMain">HEIGHT</span><span class="v" id="vMain">0m</span></div>
+        <div><span class="k">BEST</span><span class="v" id="vBest">0m</span></div>
+        <div class="sp"></div>
+        <div class="hearts off" id="hearts"></div>
+        <button class="pill" id="sndBtn" type="button">SE ON</button>
+      </div>
+
+      <div class="cab" id="cab">
+        <canvas id="game" width="160" height="240" aria-label="塔と井戸 ゲーム画面"></canvas>
+        <div class="scan" aria-hidden="true"></div>
+        <div class="veil" id="veil">
+          <h2 id="veilTitle">TOWER</h2>
+          <p id="veilBody">クリックで ジャンプ。<br>よこは かってに 歩く。<br>下に きえたら おわり。</p>
+          <button class="go" id="goBtn" type="button">はじめる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span>塔：画面をクリック（Space）＝ジャンプ</span>
+    <span>塔：よこは かってに歩く</span>
+    <span>井戸：← → / A D でうごく（スマホは画面の左右）</span>
+    <span>P＝やすみ</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var CW = 160, CH = 240, MAXHP = 5;
+  var cv = document.getElementById('game');
+  var ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  var stage = document.getElementById('stage');
+  var cab   = document.getElementById('cab');
+  var veil  = document.getElementById('veil');
+  var veilTitle = document.getElementById('veilTitle');
+  var veilBody  = document.getElementById('veilBody');
+  var goBtn  = document.getElementById('goBtn');
+  var tabT   = document.getElementById('tabTower');
+  var tabW   = document.getElementById('tabWell');
+  var kMain  = document.getElementById('kMain');
+  var vMain  = document.getElementById('vMain');
+  var vBest  = document.getElementById('vBest');
+  var hearts = document.getElementById('hearts');
+  var sndBtn = document.getElementById('sndBtn');
+
+  // ---------- 色（ファミコンの絵の具箱から） ----------
+  var C = {
+    night:'#181848', star:'#7878B8',
+    brick:'#C84C0C', brickTop:'#FC9838',
+    move:'#6844FC', moveTop:'#A48CFC',
+    weak:'#7C7C7C', weakTop:'#BCBCBC',
+    spring:'#58D854',
+    wellBg:'#0C0C14', wellWall:'#24243C', wellWall2:'#141424',
+    stone:'#58585C', stoneTop:'#BCBCBC',
+    spike:'#D82800', belt:'#F8B800',
+    white:'#FCFCFC', blue:'#2038EC', skin:'#FC7460', dark:'#0F0F0F'
+  };
+
+  // ---------- 音（四角い波だけ） ----------
+  var actx = null, sndOn = true;
+  function beep(freq, dur, vol, type){
+    if (!sndOn) return;
+    try {
+      if (!actx) { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; actx = new AC(); }
+      if (actx.state === 'suspended') actx.resume();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || 'square';
+      o.frequency.setValueAtTime(freq, actx.currentTime);
+      g.gain.setValueAtTime(vol || 0.05, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur);
+    } catch(e){}
+  }
+  function fanfareDown(){ [440,330,262,196].forEach(function(f,i){ setTimeout(function(){ beep(f,0.16,0.055); }, i*130); }); }
+  sndBtn.addEventListener('click', function(){
+    sndOn = !sndOn;
+    sndBtn.textContent = sndOn ? 'SE ON' : 'SE OFF';
+    sndBtn.classList.toggle('off', !sndOn);
+    if (sndOn) beep(660, 0.06, 0.05);
+  });
+
+  // ---------- 大きさ（整数倍だけ。ドットをにじませない） ----------
+  var pxScale = 2;
+  function layout(){
+    var r = stage.getBoundingClientRect();
+    var availW = (r.width  > 0 ? r.width  : 340) - 12;
+    var availH = (r.height > 0 ? r.height : 520) - 84;   // タブと帯のぶん
+    var s = Math.floor(Math.min(availW / CW, availH / CH));
+    if (!(s >= 1)) s = 1;
+    if (s > 4) s = 4;
+    if (s === pxScale && cv.style.width) return;
+    pxScale = s;
+    cv.style.width  = (CW * s) + 'px';
+    cv.style.height = (CH * s) + 'px';
+  }
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', layout);
+  try { new ResizeObserver(layout).observe(stage); } catch(e){}
+
+  // ---------- 状態 ----------
+  var mode = 'tower';            // tower / well
+  var st = 'title';              // title / play / over / pause
+  var best = { tower:0, well:0 };
+  var plats = [], genY = 0, camY = 0, score = 0, hp = 3, invT = 0, dead = false;
+  var scrollSpd = 0, standing = null, fellTimer = 0, originY = 0, elapsed = 0;
+  var WALK = 40, walkDir = 1, coyote = 0, jumpReq = false, standPlat = null, lastPlatX = 60, lastKind = 'normal';
+  var guy = { x:76, y:0, vx:0, vy:0, dir:1, w:8, h:12 };
+  var bits = [];                 // こわれた床のかけら
+
+  function loadBest(){
+    try {
+      var a = localStorage.getItem('touido.tower'); if (a) best.tower = parseInt(a,10)||0;
+      var b = localStorage.getItem('touido.well');  if (b) best.well  = parseInt(b,10)||0;
+    } catch(e){}
+  }
+  function saveBest(){
+    try {
+      localStorage.setItem('touido.tower', String(best.tower));
+      localStorage.setItem('touido.well',  String(best.well));
+    } catch(e){}
+  }
+
+  // ---------- 床をつくる ----------
+  function makePlat(y, kind){
+    var w = (mode === 'tower') ? 40 : 34;
+    return { x: 4 + Math.random()*(CW-8-w), y:y, w:w, kind:kind,
+             vx: kind==='move' ? (Math.random()<0.5?-26:26) : 0,
+             beltDir: Math.random()<0.5 ? -1 : 1, t:0, gone:false };
+  }
+  function pickKindTower(depth){
+    // 塔は ふつうの床 と 動く床 だけ（崩れる床・バネは使わない）
+    var r = Math.random();
+    if (depth < 12) return 'normal';
+    if (r < Math.min(0.26, 0.10 + depth*0.005)) return 'move';
+    return 'normal';
+  }
+  function pickKindWell(depth){
+    var r = Math.random();
+    if (depth < 8) return 'normal';
+    if (r < 0.14) return 'spike';
+    if (r < 0.26) return 'belt';
+    if (r < 0.36) return 'weak';
+    if (r < 0.46) return 'move';
+    return 'normal';
+  }
+  function generate(){
+    if (mode === 'tower') {
+      // 上へ伸ばす（yは小さくなる）
+      while (genY > camY - 80) {
+        var d = Math.floor((0 - genY) / 8);
+        var gap = 28 + Math.random()*16 + Math.min(6, d*0.03);
+        genY -= gap;
+        var kd = pickKindTower(d);
+        if (kd === 'weak' && lastKind === 'weak') kd = 'normal';   // 崩れる足場は続けない
+        lastKind = kd;
+        var p = makePlat(genY, kd);
+        if (p.kind === 'move') p.w = 36;
+        // 前の足場から 跳んで届く横はばに置く（届かない配置を作らない）
+        var off = (10 + Math.random()*36) * (Math.random() < 0.5 ? -1 : 1);
+        var nx = lastPlatX + off;
+        if (nx < 4 || nx > CW - 4 - p.w) nx = lastPlatX - off;
+        p.x = Math.max(4, Math.min(CW - 4 - p.w, nx));
+        lastPlatX = p.x;
+        plats.push(p);
+      }
+    } else {
+      // 下へ伸ばす
+      while (genY < camY + CH + 80) {
+        var d2 = Math.floor(genY / 8);
+        genY += 30 + Math.random()*16;
+        plats.push(makePlat(genY, pickKindWell(d2)));
+      }
+    }
+    // 画面から出たものを捨てる
+    for (var i=plats.length-1;i>=0;i--){
+      var q = plats[i];
+      if (mode === 'tower' ? (q.y > camY + CH + 60) : (q.y < camY - 60)) plats.splice(i,1);
+    }
+  }
+
+  // ---------- はじめ ----------
+  function reset(){
+    plats.length = 0; bits.length = 0;
+    score = 0; hp = MAXHP; invT = 0; dead = false; fellTimer = 0; standing = null; elapsed = 0;
+    guy.vx = 0; guy.vy = 0; guy.dir = 1;
+    if (mode === 'tower') {
+      camY = 0; genY = 0;
+      guy.x = CW/2 - guy.w/2; guy.y = CH - 40 - guy.h; originY = guy.y;
+      walkDir = 1; coyote = 0; jumpReq = false; standPlat = null;
+      var base = makePlat(CH - 40, 'normal'); base.x = 0; base.w = CW; plats.push(base);
+      genY = CH - 40;
+      lastPlatX = CW/2 - 20; lastKind = 'normal';
+      camY = 0;
+    } else {
+      camY = 0; genY = 40;
+      var top = makePlat(70, 'normal'); top.x = CW/2 - top.w/2; plats.push(top);
+      guy.x = CW/2 - guy.w/2; guy.y = 70 - guy.h; originY = guy.y;
+      scrollSpd = 18;
+      for (var j=0;j<8;j++){ genY += 34; plats.push(makePlat(genY, 'normal')); }
+    }
+    generate();
+  }
+
+  function startGame(){
+    reset();
+    st = 'play';
+    veil.classList.add('off');
+    lastT = 0;
+    beep(880, 0.07, 0.05);
+  }
+  function showTitle(){
+    st = 'title';
+    reset();
+    veil.classList.remove('off');
+    if (mode === 'tower') {
+      veilTitle.textContent = 'TOWER';
+      veilBody.innerHTML = 'クリックで ジャンプ。<br>よこは かってに 歩く。<br>下に きえたら おわり。';
+    } else {
+      veilTitle.textContent = 'WELL';
+      veilBody.innerHTML = '左右で うごく。下へ 下へ。<br>天井の トゲと、下への 落下に 注意。';
+    }
+    goBtn.textContent = 'はじめる';
+  }
+  function gameOver(){
+    st = 'over';
+    var isNew = score > best[mode];
+    if (isNew) { best[mode] = score; saveBest(); }
+    veilTitle.textContent = 'GAME OVER';
+    veilBody.innerHTML = '<span class="rec">' + score + 'm</span><br>' +
+      (isNew ? '<span class="new">NEW RECORD!</span>' : '<span class="new">BEST ' + best[mode] + 'm</span>');
+    goBtn.textContent = 'もういちど';
+    veil.classList.remove('off');
+    fanfareDown();
+  }
+  function setPause(on){
+    if (on) { st = 'pause'; veilTitle.textContent = 'PAUSE'; veilBody.innerHTML = 'ひとやすみ'; goBtn.textContent = 'つづける'; veil.classList.remove('off'); }
+    else { st = 'play'; veil.classList.add('off'); lastT = 0; }
+  }
+  function setMode(m){
+    mode = m;
+    tabT.classList.toggle('on', m === 'tower');
+    tabW.classList.toggle('on', m === 'well');
+    kMain.textContent = m === 'tower' ? 'HEIGHT' : 'DEPTH';
+    hearts.classList.toggle('off', m !== 'well');
+    showTitle();
+  }
+  tabT.addEventListener('click', function(){ setMode('tower'); });
+  tabW.addEventListener('click', function(){ setMode('well'); });
+  goBtn.addEventListener('click', function(){ if (st === 'pause') setPause(false); else startGame(); });
+
+  // ---------- そうさ ----------
+  var keys = {}, touchDir = 0;
+  window.addEventListener('keydown', function(e){
+    var k = e.key;
+    if (k === ' ' || k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') e.preventDefault();
+    keys[k] = true;
+    if (k === ' ' || k === 'Enter') {
+      if (st === 'title' || st === 'over') startGame();
+      else if (st === 'pause') setPause(false);
+      else if (st === 'play' && mode === 'tower') jumpReq = true;
+    }
+    if ((k === 'ArrowUp' || k === 'w' || k === 'W') && st === 'play' && mode === 'tower') jumpReq = true;
+    if (k === 'p' || k === 'P') { if (st === 'play') setPause(true); else if (st === 'pause') setPause(false); }
+  });
+  window.addEventListener('keyup', function(e){ keys[e.key] = false; });
+  window.addEventListener('blur', function(){ keys = {}; touchDir = 0; });
+
+  function touchAt(e){
+    var r = cv.getBoundingClientRect();
+    touchDir = ((e.clientX - r.left) / r.width < 0.5) ? -1 : 1;
+  }
+  cv.addEventListener('pointerdown', function(e){
+    try { cv.setPointerCapture(e.pointerId); } catch(err){}
+    if (mode === 'tower') { jumpReq = true; return; }   // 塔はクリック＝ジャンプだけ
+    touchAt(e);
+  });
+  cv.addEventListener('pointermove', function(e){ if (e.buttons && mode === 'well') touchAt(e); });
+  cv.addEventListener('pointerup', function(){ touchDir = 0; });
+  cv.addEventListener('pointercancel', function(){ touchDir = 0; });
+  cv.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+  function inputDir(){
+    var d = 0;
+    if (keys['ArrowLeft']  || keys['a'] || keys['A']) d -= 1;
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) d += 1;
+    if (d === 0) d = touchDir;
+    return d;
+  }
+
+  // ---------- 床にのる ----------
+  function landCheck(prevBottom){
+    var bottom = guy.y + guy.h;
+    if (guy.vy < 0) return null;
+    for (var i=0;i<plats.length;i++){
+      var p = plats[i];
+      if (p.gone) continue;
+      if (prevBottom <= p.y && bottom >= p.y) {
+        if (guy.x + guy.w > p.x + 1 && guy.x < p.x + p.w - 1) return p;
+      }
+    }
+    return null;
+  }
+
+  function hurt(){
+    if (invT > 0) return;
+    hp--; invT = 1.3;
+    beep(120, 0.22, 0.07, 'square');
+    if (hp <= 0) { dead = true; gameOver(); }
+  }
+  function breakPlat(p){
+    p.gone = true;
+    for (var i=0;i<5;i++) bits.push({ x:p.x + i*7, y:p.y, vx:(Math.random()-.5)*40, vy:-20-Math.random()*30, life:1 });
+  }
+
+  // ---------- 1コマ ----------
+  function step(dt){
+    if (st !== 'play') { generate(); return; }
+
+    var prevBottom = guy.y + guy.h;
+
+    if (mode === 'tower') {
+      // よこは かってに歩く。壁で折り返す。操作はジャンプだけ
+      guy.x += walkDir * WALK * dt;
+      if (guy.x < 0) { guy.x = 0; walkDir = 1; }
+      if (guy.x + guy.w > CW) { guy.x = CW - guy.w; walkDir = -1; }
+      guy.dir = walkDir;
+
+      guy.vy += 900 * dt;
+      if (guy.vy > 420) guy.vy = 420;
+      guy.y += guy.vy * dt;
+
+      for (var i=0;i<plats.length;i++){
+        var p = plats[i];
+        if (p.kind === 'move' && !p.gone) {
+          p.x += p.vx * dt;
+          if (p.x < 2) { p.x = 2; p.vx = -p.vx; }
+          if (p.x + p.w > CW-2) { p.x = CW-2-p.w; p.vx = -p.vx; }
+        }
+        if (p.crumb > 0) { p.crumb -= dt; if (p.crumb <= 0) breakPlat(p); }
+      }
+
+      var hit = landCheck(prevBottom);
+      if (hit) {
+        guy.y = hit.y - guy.h;
+        if (hit.kind === 'spring') { guy.vy = -520; coyote = 0; standPlat = null; beep(1046, 0.12, 0.05); }
+        else {
+          guy.vy = 0; coyote = 0.12; standPlat = hit;
+          if (!hit.landed) { hit.landed = true; beep(392, 0.04, 0.035); }
+        }
+        if (hit.kind === 'weak' && !hit.crumb) { hit.crumb = 1.5; beep(220, 0.06, 0.04); }
+      } else {
+        coyote -= dt; standPlat = null;
+      }
+      if (standPlat && standPlat.kind === 'move' && !standPlat.gone) guy.x += standPlat.vx * dt;
+
+      // 足場の端まで来たら 向きを変える（歩いていて かってに落ちることはない）
+      if (standPlat && !standPlat.gone) {
+        if (walkDir > 0 && guy.x + guy.w > standPlat.x + standPlat.w - 1) {
+          guy.x = standPlat.x + standPlat.w - guy.w - 1; walkDir = -1;
+        } else if (walkDir < 0 && guy.x < standPlat.x + 1) {
+          guy.x = standPlat.x + 1; walkDir = 1;
+        }
+      }
+
+      if (jumpReq) {
+        jumpReq = false;
+        if (coyote > 0) { guy.vy = -352; coyote = 0; standPlat = null; beep(784, 0.07, 0.045); }
+      }
+
+      if (guy.y < camY + 92) camY = guy.y - 92;
+      score = Math.max(score, Math.floor((originY - guy.y) / 8));
+      if (!dead && guy.y > camY + CH + 12) { dead = true; gameOver(); }
+
+    } else {
+      // 井戸：画面は自分のペースで下へ進む（プレイヤーを追いかけない）
+      var d = inputDir();
+      if (d) guy.dir = d;
+      if (d) guy.vx += d * 700 * dt;
+      else   guy.vx -= guy.vx * Math.min(1, 9 * dt);
+      if (guy.vx >  108) guy.vx =  108;
+      if (guy.vx < -108) guy.vx = -108;
+
+      scrollSpd = Math.min(88, 18 + elapsed * 0.85);
+      camY += scrollSpd * dt;
+
+      guy.vy += 760 * dt;
+      if (guy.vy > 250) guy.vy = 250;
+      guy.x += guy.vx * dt;
+      guy.y += guy.vy * dt;
+      if (guy.x < 6) { guy.x = 6; guy.vx = 0; }
+      if (guy.x + guy.w > CW-6) { guy.x = CW-6-guy.w; guy.vx = 0; }
+
+      for (var j=0;j<plats.length;j++){
+        var q = plats[j];
+        if (q.kind === 'move' && !q.gone) {
+          q.x += q.vx * dt;
+          if (q.x < 6) { q.x = 6; q.vx = -q.vx; }
+          if (q.x + q.w > CW-6) { q.x = CW-6-q.w; q.vx = -q.vx; }
+        }
+        if (q.crumb > 0) { q.crumb -= dt; if (q.crumb <= 0) breakPlat(q); }
+      }
+
+      var h2 = landCheck(prevBottom);
+      standing = null;
+      if (h2) {
+        guy.y = h2.y - guy.h;
+        guy.vy = 0;
+        standing = h2;
+        if (h2.kind === 'spike') hurt();
+        else if (h2.kind === 'belt') guy.x += h2.beltDir * 46 * dt;
+        else if (h2.kind === 'weak' && !h2.crumb) { h2.crumb = 0.30; beep(300,0.05,0.04); }
+        if (!h2.landed) { h2.landed = true; if (h2.kind !== 'spike') beep(392, 0.04, 0.035); }
+        if (h2.kind === 'move') guy.x += h2.vx * dt;
+      }
+
+      // 天井のトゲ
+      if (guy.y - camY < 13) { guy.y = camY + 13; hurt(); }
+      // 画面の下へ 落ちきったら おわり
+      if (!dead && guy.y - camY > CH + 4) { dead = true; gameOver(); }
+      score = Math.max(score, Math.floor((guy.y - originY) / 8));
+    }
+
+    if (invT > 0) invT -= dt;
+    elapsed += dt;
+    generate();
+
+    for (var b=bits.length-1;b>=0;b--){
+      var bt = bits[b];
+      bt.vy += 420*dt; bt.x += bt.vx*dt; bt.y += bt.vy*dt; bt.life -= dt*1.4;
+      if (bt.life <= 0) bits.splice(b,1);
+    }
+  }
+
+  // ---------- 絵 ----------
+  function px(x,y,w,h,c){ ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+
+  function drawGuy(x, y, dir, hide){
+    if (hide) return;
+    px(x+2, y+0, 4, 3, C.white);                 // あたま
+    px(x + (dir>0 ? 4 : 3), y+1, 1, 1, C.dark);  // め
+    px(x+1, y+3, 6, 5, C.skin);                  // からだ
+    px(x+0, y+4, 1, 3, C.skin);
+    px(x+7, y+4, 1, 3, C.skin);
+    px(x+1, y+8, 2, 4, C.blue);                  // あし
+    px(x+5, y+8, 2, 4, C.blue);
+  }
+
+  function drawPlat(p, sy){
+    if (p.gone) return;
+    if (mode === 'tower') {
+      if (p.kind === 'weak') {
+        var cr = p.crumb || 0;
+        var warn = cr > 0 && (Math.floor(cr * (cr < 0.45 ? 20 : 9)) % 2 === 0);
+        var wb = warn ? C.spike : C.weak, wt = warn ? C.white : C.weakTop;
+        for (var i=0;i<p.w;i+=7){ px(p.x+i, sy, 5, 5, wb); px(p.x+i, sy, 5, 1, wt); }
+      } else if (p.kind === 'move') {
+        px(p.x, sy, p.w, 5, C.move); px(p.x, sy, p.w, 1, C.moveTop);
+      } else {
+        px(p.x, sy, p.w, 5, C.brick); px(p.x, sy, p.w, 1, C.brickTop);
+        for (var k=6;k<p.w;k+=8) px(p.x+k, sy+1, 1, 4, '#A03808');
+        if (p.kind === 'spring') {
+          px(p.x + p.w/2 - 3, sy-3, 6, 3, C.spring);
+          px(p.x + p.w/2 - 2, sy-4, 4, 1, C.white);
+        }
+      }
+    } else {
+      px(p.x, sy, p.w, 5, C.stone); px(p.x, sy, p.w, 1, C.stoneTop);
+      if (p.kind === 'spike') {
+        for (var s=1;s<p.w-2;s+=5){ px(p.x+s, sy-2, 3, 2, C.spike); px(p.x+s+1, sy-3, 1, 1, C.spike); }
+      } else if (p.kind === 'belt') {
+        var dirB = p.beltDir;
+        for (var t=2;t<p.w-3;t+=6) px(p.x + (dirB>0 ? t : p.w-t-3), sy+1, 3, 1, C.belt);
+      } else if (p.kind === 'weak') {
+        for (var u=0;u<p.w;u+=7) px(p.x+u+5, sy, 2, 5, C.wellBg);
+      } else if (p.kind === 'move') {
+        px(p.x, sy, 2, 5, C.belt); px(p.x+p.w-2, sy, 2, 5, C.belt);
+      }
+    }
+  }
+
+  function draw(){
+    // 背景
+    if (mode === 'tower') {
+      px(0,0,CW,CH, C.night);
+      for (var i=0;i<26;i++){
+        var sx = (i*61) % CW, sy0 = ((i*97) % 600) - (camY*0.25) % 600;
+        var yy = ((sy0 % 600) + 600) % 600;
+        if (yy < CH) px(sx, yy, 1, 1, C.star);
+      }
+    } else {
+      px(0,0,CW,CH, C.wellBg);
+      for (var w=0;w<CH;w+=8){
+        var off = Math.floor(((w + camY) / 8)) % 2;
+        px(0, w, 6, 8, off ? C.wellWall : C.wellWall2);
+        px(CW-6, w, 6, 8, off ? C.wellWall2 : C.wellWall);
+      }
+    }
+
+    // 床
+    for (var p=0;p<plats.length;p++){
+      var pl = plats[p], sy = Math.round(pl.y - camY);
+      if (sy < -10 || sy > CH+10) continue;
+      drawPlat(pl, sy);
+    }
+
+    // かけら
+    for (var b=0;b<bits.length;b++){
+      var bt = bits[b];
+      px(bt.x, bt.y - camY, 3, 3, mode==='tower' ? C.weakTop : C.stone);
+    }
+
+    // 自分
+    var blink = invT > 0 && Math.floor(invT*12) % 2 === 0;
+    if (!dead) drawGuy(Math.round(guy.x), Math.round(guy.y - camY), guy.dir, blink);
+
+    // 天井のトゲ（井戸）
+    if (mode === 'well') {
+      px(0,0,CW,4,'#3C1010');
+      for (var s2=0;s2<CW;s2+=6){ px(s2, 4, 4, 3, C.spike); px(s2+1, 7, 2, 2, C.spike); }
+    }
+  }
+
+  // ---------- 表示 ----------
+  var prev = {};
+  function syncBar(){
+    if (prev.score !== score) { vMain.textContent = score + 'm'; prev.score = score; }
+    var bb = best[mode];
+    if (prev.best !== bb || prev.mode !== mode) { vBest.textContent = bb + 'm'; prev.best = bb; prev.mode = mode; }
+    if (prev.hp !== hp) {
+      hearts.innerHTML = '';
+      for (var i=0;i<MAXHP;i++){ var h = document.createElement('i'); if (i >= hp) h.className = 'off'; hearts.appendChild(h); }
+      prev.hp = hp;
+    }
+  }
+
+  // ---------- まわす ----------
+  var lastT = 0, acc = 0;
+  function frame(now){
+    requestAnimationFrame(frame);
+    if (!lastT) { lastT = now; return; }
+    var dt = Math.min(0.05, (now - lastT)/1000);
+    lastT = now;
+    if (st !== 'pause') {
+      acc += dt;
+      var g = 0;
+      while (acc >= 1/60 && g < 6) { step(1/60); acc -= 1/60; g++; }
+      if (g >= 6) acc = 0;
+      draw();
+    }
+    syncBar();
+  }
+
+  function boot(saved){
+    loadBest();
+    if (saved && saved.best) {
+      if (saved.best.tower > best.tower) best.tower = saved.best.tower;
+      if (saved.best.well  > best.well)  best.well  = saved.best.well;
+      saveBest();
+    }
+    layout();
+    setMode('tower');
+    syncBar();
+    requestAnimationFrame(frame);
+  }
+  try {
+    var hot = window.claude && window.claude.hot;
+    if (hot && hot.snapshot) hot.snapshot(function(){ return { best: best }; });
+    if (hot && hot.ready) hot.ready(boot);
+    else boot((hot && hot.data) || {});
+  } catch(e){ boot({}); }
+})();
+</script>
+</body>
+</html>
