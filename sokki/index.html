@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="日本語入力（かな漢字変換）で六十秒に何文字書けるかを測るタイピング。初級＝単語・中級＝一文・上級＝長文の三段。">
+  <style>
+    /* 単体のページとして成立させるための最低限の土台 */
+    :root{
+      color-scheme: light;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#faf9f7; }
+    img{ max-width:100%; }
+    [hidden]{ display:none !important; }
+  </style>
+<title>速記</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@400;700&family=Roboto+Mono:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+  :root{
+    color-scheme: light;
+    --desk:#D9D2C2;
+    --paper:#FBF8F0;
+    --rule-soft:rgba(127,168,143,.34);
+    --ink:#221F19;
+    --dim:#8A8272;
+    --done:#4E8266;          /* 打てたところ */
+    --miss:#C0392B;
+    --accent:#2F5D74;
+    --shadow:0 14px 34px rgba(60,50,30,.22);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --desk:#15140F;
+      --shadow:0 14px 40px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --desk:#15140F;
+    --shadow:0 14px 40px rgba(0,0,0,.6);
+  }
+
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--desk);color:var(--ink);
+    font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',system-ui,sans-serif;
+  }
+  .page{
+    height:100%;box-sizing:border-box;
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+    padding:12px 16px 16px;
+  }
+  .masthead{display:flex;align-items:baseline;gap:12px;flex:0 0 auto;color:#E6E0D0}
+  .masthead h1{
+    margin:0;font-family:'Zen Old Mincho',serif;font-weight:700;
+    font-size:clamp(19px,5vw,25px);letter-spacing:.34em;text-indent:.34em;
+  }
+  .masthead p{margin:0;font-size:11px;color:#9A9385;letter-spacing:.08em}
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]) .masthead{color:var(--ink)}
+    :root:not([data-theme="dark"]) .masthead p{color:#6E6757}
+  }
+
+  .stage{flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:center;justify-content:center}
+  .deck{
+    width:min(100%,940px);height:100%;max-height:600px;
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+  }
+
+  .sheet{
+    position:relative;width:100%;
+    background:var(--paper);
+    box-shadow:var(--shadow);
+    border:1px solid rgba(34,31,25,.14);
+    padding:22px 26px 24px;box-sizing:border-box;
+    flex:1 1 auto;min-height:0;min-width:0;
+    display:flex;flex-direction:column;gap:14px;
+  }
+  .sheet::before{
+    content:"";position:absolute;left:14px;top:14px;bottom:14px;width:1px;
+    background:var(--rule-soft);
+  }
+
+  .levels{
+    flex:0 0 auto;width:100%;
+    display:flex;gap:4px;align-items:flex-end;
+  }
+  .lv{
+    flex:1 1 0;min-width:0;padding:7px 4px 8px;cursor:pointer;
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    color:#9A9385;background:rgba(251,248,240,.10);
+    border:1px solid rgba(230,224,208,.22);border-bottom:none;border-radius:0;
+    display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.3;
+    transition:color .12s,background .12s;
+  }
+  .lv b{font-weight:700;font-size:13px;color:inherit;letter-spacing:.08em}
+  .lv i{font-style:normal;font-size:9px;opacity:.75;letter-spacing:.06em}
+  .lv:hover{color:#D8D2C2;background:rgba(251,248,240,.18)}
+  .lv.on{
+    color:var(--accent);background:var(--paper);
+    border-color:rgba(34,31,25,.14);padding-bottom:10px;
+  }
+  .lv.on i{opacity:.85}
+  .lv:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]) .lv{color:#6E6757;background:rgba(34,31,25,.05);border-color:rgba(34,31,25,.14)}
+    :root:not([data-theme="dark"]) .lv:hover{color:var(--ink);background:rgba(34,31,25,.09)}
+    :root:not([data-theme="dark"]) .lv.on{color:var(--accent);background:var(--paper)}
+  }
+
+  .bar{
+    display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;min-width:0;
+    border-bottom:1px solid var(--rule-soft);padding-bottom:10px;
+  }
+  .bar .cell{display:flex;flex-direction:column;gap:1px}
+  .bar .k{font-size:9px;letter-spacing:.2em;color:var(--dim)}
+  .bar .v{
+    font-family:'Roboto Mono',monospace;font-weight:700;font-size:19px;line-height:1;
+    font-variant-numeric:tabular-nums;color:var(--ink);
+  }
+  .bar .v.sm{font-size:14px}
+  .bar .sp{flex:1}
+  .bar .time .v{font-size:26px;color:var(--accent)}
+  .bar .time.low .v{color:var(--miss)}
+
+  /* 出題 */
+  .target{
+    text-align:center;padding:14px 4px 4px;min-height:96px;
+    flex:1 1 auto;
+    display:flex;flex-direction:column;justify-content:center;gap:9px;
+  }
+  .target .line{
+    font-family:'Zen Old Mincho',serif;font-weight:700;
+    font-size:clamp(20px,4.4vw,40px);letter-spacing:.1em;line-height:1.55;
+    word-break:break-all;
+  }
+  .target.mid .line{font-size:clamp(17px,3.2vw,31px);letter-spacing:.06em;line-height:1.62}
+  .target.long .line{font-size:clamp(15px,2.6vw,26px);letter-spacing:.03em;line-height:1.72}
+  .target .line .ok{color:var(--done)}
+  .target .line .bad{color:var(--miss);text-decoration:underline wavy var(--miss)}
+  .target .line .yet{color:var(--ink);opacity:.82}
+  .target .kana{font-size:12px;letter-spacing:.2em;color:var(--dim)}
+  .target.shake{animation:shake .2s ease}
+  @keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+  @media (prefers-reduced-motion:reduce){ .target.shake{animation:none} }
+
+  /* 書き込み欄 */
+  .entrywrap{position:relative}
+  .entry{
+    width:100%;box-sizing:border-box;
+    font-family:'Zen Kaku Gothic New',sans-serif;font-size:clamp(17px,4vw,25px);
+    letter-spacing:.06em;color:var(--ink);
+    background:transparent;border:none;border-bottom:2px solid var(--rule-soft);
+    padding:9px 2px;outline:none;
+  }
+  .entry:focus{border-bottom-color:var(--accent)}
+  .entry::placeholder{color:#B9B2A2}
+  .entrywrap .hint{
+    position:absolute;right:2px;bottom:12px;font-size:10.5px;color:var(--dim);
+    letter-spacing:.1em;pointer-events:none;
+  }
+  .entrywrap.composing .hint{color:var(--accent)}
+
+  .next{
+    display:flex;gap:6px 16px;justify-content:center;flex-wrap:wrap;min-width:0;
+    font-size:12px;color:var(--dim);border-top:1px solid var(--rule-soft);padding-top:10px;
+  }
+  .next b{font-weight:400;color:var(--ink);opacity:.5}
+
+  .veil{
+    position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+    gap:14px;padding:26px;box-sizing:border-box;text-align:center;
+    background:var(--paper);
+  }
+  /* 中身が用紙より高いときは、上下へこぼさず中で送る */
+  .veil > :first-child{margin-top:auto}
+  .veil > :last-child{margin-bottom:auto}
+  .veil > *{flex:0 0 auto}
+  .veil.off{display:none}
+  .veil.result .tip{display:none}
+  .veil h2{
+    margin:0;font-family:'Zen Old Mincho',serif;font-weight:700;
+    font-size:clamp(22px,6vw,30px);letter-spacing:.24em;text-indent:.24em;
+  }
+  .veil p{margin:0;font-size:12.5px;line-height:1.95;color:rgba(34,31,25,.74);max-width:30em}
+  .veil .tip{
+    font-size:12px;color:var(--accent);border:1px solid rgba(47,93,116,.35);
+    padding:8px 13px;background:rgba(47,93,116,.05);line-height:1.8;
+  }
+  .veil .grid{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 26px;max-width:100%;
+    font-family:'Roboto Mono',monospace;font-variant-numeric:tabular-nums;
+  }
+  .veil .grid div{display:flex;flex-direction:column;gap:2px}
+  .veil .grid .k{font-family:'Zen Kaku Gothic New',sans-serif;font-size:10px;letter-spacing:.18em;color:var(--dim)}
+  .veil .grid .v{font-size:24px;font-weight:700}
+  .veil .rank{
+    font-family:'Zen Old Mincho',serif;font-weight:700;font-size:46px;line-height:1;
+    color:var(--accent);letter-spacing:.06em;
+  }
+  .veil .note{font-size:11px;letter-spacing:.14em;color:var(--accent)}
+  .go{
+    font-family:'Zen Old Mincho',serif;font-weight:700;font-size:15px;
+    letter-spacing:.24em;text-indent:.24em;
+    padding:11px 28px;cursor:pointer;
+    color:var(--paper);background:var(--ink);border:none;border-radius:1px;
+  }
+  .go:hover{background:var(--accent)}
+  .go:focus-visible,.entry:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+  .legend{
+    flex:0 0 auto;width:100%;max-width:700px;
+    border-top:1px solid rgba(230,224,208,.2);padding-top:8px;
+    display:flex;flex-wrap:wrap;gap:4px 16px;font-size:11px;color:#9A9385;
+  }
+  .legend span{white-space:nowrap}
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]) .legend{border-top-color:rgba(34,31,25,.18);color:#6E6757}
+  }
+  @media (max-height:620px){ .masthead p{display:none} }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="masthead">
+    <h1>速記</h1>
+    <p>六十秒、かな漢字変換でどれだけ書けるか</p>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="deck">
+      <div class="levels" id="levels">
+        <button class="lv" type="button" data-l="0"><b>初級</b><i>単語</i></button>
+        <button class="lv on" type="button" data-l="1"><b>中級</b><i>一文</i></button>
+        <button class="lv" type="button" data-l="2"><b>上級</b><i>長文</i></button>
+      </div>
+
+    <div class="sheet" id="sheet">
+
+      <div class="bar">
+        <div class="cell time" id="timeCell"><span class="k">ノコリ</span><span class="v" id="vTime">60.0</span></div>
+        <div class="cell"><span class="k">モジスウ</span><span class="v" id="vChars">0</span></div>
+        <div class="cell"><span class="k">カケタブン</span><span class="v sm" id="vLines">0</span></div>
+        <div class="cell"><span class="k">ミス</span><span class="v sm" id="vMiss">0</span></div>
+        <div class="sp"></div>
+        <div class="cell"><span class="k">サイコウ</span><span class="v sm" id="vBest">--</span></div>
+      </div>
+
+      <div class="target" id="targetBox">
+        <div class="line" id="tLine"></div>
+        <div class="kana" id="tKana"></div>
+      </div>
+
+      <div class="entrywrap" id="entryWrap">
+        <input class="entry" id="entry" type="text" placeholder="ここに入力して Enter"
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <span class="hint" id="hint">Enter で確定</span>
+      </div>
+
+      <div class="next" id="nextBox"></div>
+
+      <div class="veil" id="veil">
+        <h2 id="veilTitle">速記</h2>
+        <div id="veilBody">
+          <p>上の文を、そのまま打って <b>Enter</b>。六十秒で何文字書けるか。</p>
+          <p style="margin-top:8px">漢字も含めて<b>一字一句そろえば</b>正解です。<br>最初の一文字でタイマーが動き出します。</p>
+        </div>
+        <div class="tip">
+          <b>日本語入力（IME）はオンのままで結構です。</b><br>
+          変換のEnterと、答えを出すEnterは区別しています。<br>
+          どうしても分からない文は <b>Esc</b> で飛ばせます（ミス1つ）。
+        </div>
+        <button class="go" id="goBtn" type="button">はじめる</button>
+      </div>
+
+    </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span>日本語入力オンのまま</span>
+    <span>Enter＝確定</span>
+    <span>Esc＝この文を飛ばす</span>
+    <span>スマホも同じように使えます</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------- 出題 ----------
+  // 初級：単語
+  var WORDS = [
+    ['朝ごはん','あさごはん'],['電車','でんしゃ'],['図書館','としょかん'],['自転車','じてんしゃ'],
+    ['温泉','おんせん'],['新聞','しんぶん'],['学校','がっこう'],['冷蔵庫','れいぞうこ'],
+    ['飛行機','ひこうき'],['洗濯物','せんたくもの'],['待ち合わせ','まちあわせ'],['信号機','しんごうき'],
+    ['郵便局','ゆうびんきょく'],['美術館','びじゅつかん'],['掃除機','そうじき'],['運動会','うんどうかい'],
+    ['湯呑み','ゆのみ'],['歯磨き','はみがき'],['目覚まし','めざまし'],['引っ越し','ひっこし'],
+    ['出発','しゅっぱつ'],['実験','じっけん'],['切符','きっぷ'],['日記','にっき'],
+    ['一緒','いっしょ'],['発表','はっぴょう'],['卒業','そつぎょう'],['旅行','りょこう'],
+    ['料理','りょうり'],['準備','じゅんび'],['注文','ちゅうもん'],['表現','ひょうげん'],
+    ['散歩','さんぽ'],['花火','はなび'],['手紙','てがみ'],['名前','なまえ'],
+    ['時計','とけい'],['天気','てんき'],['果物','くだもの'],['台所','だいどころ'],
+    ['階段','かいだん'],['鉛筆','えんぴつ'],['定規','じょうぎ'],['教室','きょうしつ'],
+    ['宿題','しゅくだい'],['黒板','こくばん'],['体育館','たいいくかん'],['保健室','ほけんしつ'],
+    ['給食','きゅうしょく'],['文化祭','ぶんかさい'],['部活動','ぶかつどう'],['委員会','いいんかい'],
+    ['放課後','ほうかご'],['通学路','つうがくろ'],['横断歩道','おうだんほどう'],['自動販売機','じどうはんばいき'],
+    ['待合室','まちあいしつ'],['乗り換え','のりかえ'],['改札口','かいさつぐち'],['駐車場','ちゅうしゃじょう'],
+    ['商店街','しょうてんがい'],['八百屋','やおや'],['魚屋','さかなや'],['床屋','とこや'],
+    ['喫茶店','きっさてん'],['映画館','えいがかん'],['遊園地','ゆうえんち'],['動物園','どうぶつえん'],
+    ['水族館','すいぞくかん'],['展望台','てんぼうだい'],['神社','じんじゃ'],['境内','けいだい'],
+    ['鳥居','とりい'],['提灯','ちょうちん'],['浴衣','ゆかた'],['団扇','うちわ'],
+    ['見積書','みつもりしょ'],['納品書','のうひんしょ'],['領収書','りょうしゅうしょ'],['担当者','たんとうしゃ'],
+    ['在庫','ざいこ'],['点検','てんけん'],['修理','しゅうり'],['部品','ぶひん']
+  ];
+
+  // 中級：一文
+  var LINES = [
+    ['明日の会議は十時からです','あすのかいぎはじゅうじからです'],
+    ['資料を添付いたします','しりょうをてんぷいたします'],
+    ['お忙しいところ恐れ入ります','おいそがしいところおそれいります'],
+    ['来週の予定を確認します','らいしゅうのよていをかくにんします'],
+    ['部品の在庫を調べてください','ぶひんのざいこをしらべてください'],
+    ['雨が降りそうなので傘を持っていく','あめがふりそうなのでかさをもっていく'],
+    ['駅前の駐車場が満車だった','えきまえのちゅうしゃじょうがまんしゃだった'],
+    ['ご確認のほどよろしくお願いします','ごかくにんのほどよろしくおねがいします'],
+    ['先ほどの件について報告します','さきほどのけんについてほうこくします'],
+    ['期限は今月末までとなります','きげんはこんげつまつまでとなります'],
+    ['担当者に連絡を取りました','たんとうしゃにれんらくをとりました'],
+    ['朝から雲ひとつない青空だった','あさからくもひとつないあおぞらだった'],
+    ['近所の公園を散歩してきた','きんじょのこうえんをさんぽしてきた'],
+    ['夕飯の支度をそろそろ始める','ゆうはんのしたくをそろそろはじめる'],
+    ['冷蔵庫の中を片付けた','れいぞうこのなかをかたづけた'],
+    ['図書館で借りた本を返した','としょかんでかりたほんをかえした'],
+    ['明日は早めに家を出る予定です','あしたははやめにいえをでるよていです'],
+    ['領収書を保管しておいてください','りょうしゅうしょをほかんしておいてください'],
+    ['見積書の金額を訂正しました','みつもりしょのきんがくをていせいしました'],
+    ['台風の影響で電車が遅れている','たいふうのえいきょうででんしゃがおくれている'],
+    ['写真を何枚か撮っておきました','しゃしんをなんまいかとっておきました'],
+    ['来月から新しい制度が始まります','らいげつからあたらしいせいどがはじまります'],
+    ['ご都合のよい日をお知らせください','ごつごうのよいひをおしらせください'],
+    ['作業の手順を書き出しておく','さぎょうのてじゅんをかきだしておく'],
+    ['修理が終わり次第ご連絡します','しゅうりがおわりしだいごれんらくします'],
+    ['空が暗くなってきたので帰ろう','そらがくらくなってきたのでかえろう'],
+    ['湯を沸かしてお茶をいれる','ゆをわかしておちゃをいれる'],
+    ['庭の草がずいぶん伸びていた','にわのくさがずいぶんのびていた'],
+    ['受付で名前を書いて待つ','うけつけでなまえをかいてまつ'],
+    ['書類に判を押して提出した','しょるいにはんをおしてていしゅつした'],
+    ['注文の数を間違えてしまった','ちゅうもんのかずをまちがえてしまった'],
+    ['交換の部品が届くのは来週です','こうかんのぶひんがとどくのはらいしゅうです'],
+    ['点検の日程を調整しています','てんけんのにっていをちょうせいしています'],
+    ['詳しい内容は改めてお伝えします','くわしいないようはあらためておつたえします'],
+    ['ひとまず現状のままで様子を見る','ひとまずげんじょうのままでようすをみる'],
+    ['駅から歩いて十分ほどの場所です','えきからあるいてじゅっぷんほどのばしょです'],
+    ['気温が下がる前に上着を用意する','きおんがさがるまえにうわぎをよういする'],
+    ['番号をもう一度教えてください','ばんごうをもういちどおしえてください'],
+    ['今週中に片を付けたい','こんしゅうちゅうにかたをつけたい'],
+    ['昼過ぎに雨が上がるそうです','ひるすぎにあめがあがるそうです'],
+    ['引き出しの奥から古い写真が出てきた','ひきだしのおくからふるいしゃしんがでてきた'],
+    ['帰りに買い物を済ませておく','かえりにかいものをすませておく'],
+    ['連休の予定はまだ決めていない','れんきゅうのよていはまだきめていない'],
+    ['机の上を片付けてから帰る','つくえのうえをかたづけてからかえる'],
+    ['約束の時間に間に合いそうです','やくそくのじかんにまにあいそうです']
+  ];
+
+  // 上級：長文
+  var LONG = [
+    ['本日はお忙しいところお時間をいただきありがとうございました。次回は来月の第二週あたりで調整いたします。',''],
+    ['先日ご相談いただいた件について社内で確認いたしました。結論から申し上げますと、ご希望の日程での対応が可能です。',''],
+    ['雨の日が続いたせいか庭の草がずいぶん伸びてしまった。週末に天気が良ければ朝のうちに刈ってしまおうと思う。',''],
+    ['部品の入荷が遅れているとの連絡がありました。到着次第すぐに作業に入りますので、今しばらくお待ちください。',''],
+    ['点検の結果、特に異常は見られませんでした。次回の点検はおよそ半年後を目安にご案内いたします。',''],
+    ['朝から降り続いた雨がようやく上がり、窓の外には薄い虹がかかっていた。子どもたちが声を上げて外へ出ていく。',''],
+    ['この件につきましては担当者が不在のため、明日改めてご連絡を差し上げます。ご不便をおかけして申し訳ありません。',''],
+    ['来月から書類の提出方法が変わります。詳しい手順は別紙にまとめてありますので、目を通しておいてください。',''],
+    ['出発の前に持ち物をもう一度確認する。財布と鍵と、忘れやすいのは充電器だ。玄関に置いておけば間違いない。',''],
+    ['見積もりの内容を精査したところ、数量に誤りがありました。訂正版をお送りしますので差し替えをお願いします。',''],
+    ['冬の朝は空気が澄んでいて、遠くの山まではっきりと見える。白い息を吐きながら駅までの道を急いだ。',''],
+    ['作業の手順は次のとおりです。まず電源を落とし、次に固定具を外し、最後に部品を取り外してください。',''],
+    ['ご指摘いただいた箇所を修正しました。あわせて全体の表現も見直しましたので、ご確認いただけますと幸いです。',''],
+    ['夕方になると近所の子どもたちが公園に集まってくる。日が落ちるまでの短い時間を、めいっぱい走り回っている。',''],
+    ['今年度の予定表を配布します。日程に変更が生じた場合は、その都度あらためてお知らせいたします。',''],
+    ['修理には部品の取り寄せが必要となり、およそ一週間ほどお時間をいただきます。代わりの手配もご相談ください。',''],
+    ['本を読むのは寝る前と決めている。十分でも二十分でも、その時間があるだけで一日の終わりが落ち着く。',''],
+    ['提出された書類に不備がありましたので、該当箇所を赤で囲んでお返しします。修正のうえ再提出をお願いします。','']
+  ];
+
+  var LEVELS = [
+    { name:'初級', sub:'単語', items:WORDS, kana:true },
+    { name:'中級', sub:'一文', items:LINES, kana:true },
+    { name:'上級', sub:'長文', items:LONG,  kana:false }
+  ];
+  var levelIdx = 1;
+  function L(){ return LEVELS[levelIdx]; }
+
+  var TIME = 60;
+  var st = 'title';
+  var queue = [], qi = 0;
+  var left = TIME, started = false, chars = 0, lines = 0, miss = 0, best = 0;
+
+  var vTime = document.getElementById('vTime');
+  var vChars = document.getElementById('vChars');
+  var vLines = document.getElementById('vLines');
+  var vMiss = document.getElementById('vMiss');
+  var vBest = document.getElementById('vBest');
+  var timeCell = document.getElementById('timeCell');
+  var tLine = document.getElementById('tLine');
+  var tKana = document.getElementById('tKana');
+  var targetBox = document.getElementById('targetBox');
+  var entry = document.getElementById('entry');
+  var entryWrap = document.getElementById('entryWrap');
+  var hint = document.getElementById('hint');
+  var nextBox = document.getElementById('nextBox');
+  var veil = document.getElementById('veil');
+  var veilTitle = document.getElementById('veilTitle');
+  var veilBody = document.getElementById('veilBody');
+  var goBtn = document.getElementById('goBtn');
+  var levelsEl = document.getElementById('levels');
+
+  var composing = false;
+
+  var bests = [0,0,0];
+  function loadBest(){
+    try {
+      for (var i = 0; i < 3; i++){
+        var v = localStorage.getItem('sokki.cpm.' + i);
+        if (v) bests[i] = parseFloat(v) || 0;
+      }
+      var lv = localStorage.getItem('sokki.level');
+      if (lv !== null) levelIdx = Math.max(0, Math.min(2, parseInt(lv, 10) || 0));
+    } catch(e){}
+    best = bests[levelIdx];
+  }
+  function saveBest(){
+    bests[levelIdx] = best;
+    try {
+      localStorage.setItem('sokki.cpm.' + levelIdx, String(best));
+      localStorage.setItem('sokki.level', String(levelIdx));
+    } catch(e){}
+  }
+
+  function shuffled(){
+    var a = L().items.slice();
+    for (var i = a.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function cur(){ return queue[qi]; }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // 打った文字列と正解を見比べて、色分けして出す
+  function paint(){
+    var t = cur()[0], v = entry.value;
+    targetBox.classList.toggle('mid',  t.length > 20 && t.length <= 34);
+    targetBox.classList.toggle('long', t.length > 34);
+    var i = 0;
+    while (i < v.length && i < t.length && v.charAt(i) === t.charAt(i)) i++;
+    var okPart = t.slice(0, i);
+    var badPart = '';
+    var yetPart = t.slice(i);
+    if (i < v.length) {                  // 打った文字が正解と食い違っている
+      badPart = t.slice(i, i + 1);
+      yetPart = t.slice(i + 1);
+    }
+    tLine.innerHTML = '<span class="ok">' + esc(okPart) + '</span>'
+      + (badPart ? '<span class="bad">' + esc(badPart) + '</span>' : '')
+      + '<span class="yet">' + esc(yetPart) + '</span>';
+  }
+  function setLine(){
+    if (qi >= queue.length) queue = queue.concat(shuffled());
+    tKana.textContent = L().kana ? cur()[1] : '';
+    entry.value = '';
+    paint();
+    var out = [];
+    for (var i = 1; i <= 2; i++){
+      var w = queue[qi + i];
+      if (w) out.push('<b>つぎ</b> ' + esc(w[0].length > 12 ? w[0].slice(0, 12) + '…' : w[0]));
+    }
+    nextBox.innerHTML = out.join('　　');
+  }
+
+  function reset(){
+    queue = shuffled(); qi = 0;
+    left = TIME; started = false; chars = 0; lines = 0; miss = 0;
+    setLine(); syncBar();
+  }
+  function focusEntry(){ try { entry.focus({ preventScroll:true }); } catch(e){ try { entry.focus(); } catch(e2){} } }
+  function startGame(){
+    reset(); st = 'play';
+    veil.classList.add('off');
+    lastT = 0;
+    focusEntry();
+  }
+  function showTitle(){
+    st = 'title'; reset();
+    veilTitle.textContent = '速記';
+    veil.classList.remove('result');
+    veilBody.innerHTML = '<p>上の文を、そのまま打って <b>Enter</b>。六十秒で何文字書けるか。</p>'
+      + '<p style="margin-top:8px">いま選んでいるのは <b>' + L().name + '（' + L().sub + '）</b>。用紙の上のつまみで変えられます。<br>'
+      + '漢字も含めて<b>一字一句そろえば</b>正解です。最初の一文字でタイマーが動き出します。</p>';
+    goBtn.textContent = 'はじめる';
+    veil.classList.remove('off');
+  }
+  function rankOf(cpm){
+    if (cpm >= 200) return 'S';
+    if (cpm >= 150) return 'A';
+    if (cpm >= 100) return 'B';
+    if (cpm >= 60)  return 'C';
+    return 'D';
+  }
+  function finish(){
+    st = 'over';
+    var cpm = chars / TIME * 60;
+    var tries = lines + miss;
+    var acc = tries ? Math.round(lines / tries * 100) : 100;
+    var isNew = cpm > best;
+    if (isNew) { best = cpm; saveBest(); }
+    veilTitle.textContent = '終';
+    veil.classList.add('result');
+    veilBody.innerHTML =
+      '<div class="rank">' + rankOf(cpm) + '</div>'
+      + '<div class="grid">'
+      +   '<div><span class="k">モジスウ</span><span class="v">' + chars + '</span></div>'
+      +   '<div><span class="k">1プンアタリ</span><span class="v">' + Math.round(cpm) + '</span></div>'
+      +   '<div><span class="k">カケタブン</span><span class="v">' + lines + '</span></div>'
+      +   '<div><span class="k">セイカクリツ</span><span class="v">' + acc + '%</span></div>'
+      + '</div>'
+      + '<p class="note" style="margin-top:6px">'
+      + L().name + '　' + (isNew ? 'サイコウ コウシン' : 'サイコウ ' + Math.round(best) + ' 文字/分') + '</p>';
+    goBtn.textContent = 'もう一度';
+    veil.classList.remove('off');
+  }
+
+  function syncBar(){
+    vTime.textContent = Math.max(0, left).toFixed(1);
+    timeCell.classList.toggle('low', left <= 10);
+    vChars.textContent = chars;
+    vLines.textContent = lines;
+    vMiss.textContent = miss;
+    vBest.textContent = best ? Math.round(best) : '--';
+  }
+
+  function submit(){
+    if (st !== 'play') return;
+    var t = cur()[0], v = entry.value;
+    if (v.length === 0) return;
+    if (v === t) {
+      chars += t.length; lines++; qi++;
+      setLine();
+    } else {
+      miss++;
+      paint();
+      targetBox.classList.remove('shake');
+      void targetBox.offsetWidth;
+      targetBox.classList.add('shake');
+    }
+    syncBar();
+  }
+  function skip(){
+    if (st !== 'play') return;
+    miss++; qi++; setLine(); syncBar();
+  }
+
+  // ---------- 入力まわり ----------
+  // 変換中かどうかを押さえる。これを見ないと、変換確定のEnterで答えを出してしまう
+  entry.addEventListener('compositionstart', function(){
+    composing = true;
+    entryWrap.classList.add('composing');
+    hint.textContent = '変換中';
+  });
+  entry.addEventListener('compositionend', function(){
+    composing = false;
+    entryWrap.classList.remove('composing');
+    hint.textContent = 'Enter で確定';
+    paint();
+  });
+  entry.addEventListener('input', function(){
+    if (st === 'play' && !started && entry.value.length) started = true;
+    paint();
+  });
+  entry.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') {
+      // 変換を確定するEnterはここで手を出さない
+      if (e.isComposing || composing || e.keyCode === 229) return;
+      e.preventDefault();
+      submit();
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (e.isComposing || composing) return;   // 変換の取り消しは邪魔しない
+      e.preventDefault();
+      skip();
+    }
+  });
+
+  function setLevel(i){
+    levelIdx = Math.max(0, Math.min(LEVELS.length - 1, i));
+    best = bests[levelIdx];
+    var btns = levelsEl.getElementsByTagName('button');
+    for (var k = 0; k < btns.length; k++) btns[k].classList.toggle('on', k === levelIdx);
+    saveBest();
+    if (st === 'play') { st = 'title'; }
+    showTitle();
+  }
+  levelsEl.addEventListener('click', function(e){
+    var b = e.target;
+    while (b && b !== levelsEl && !b.getAttribute('data-l')) b = b.parentNode;
+    if (b && b !== levelsEl) setLevel(parseInt(b.getAttribute('data-l'), 10));
+  });
+
+  goBtn.addEventListener('click', function(){ startGame(); });
+  window.addEventListener('keydown', function(e){
+    if (st === 'play') return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (e.isComposing) return;
+      e.preventDefault(); startGame();
+    }
+  });
+  document.addEventListener('pointerdown', function(){ if (st === 'play') focusEntry(); });
+
+  // ---------- まわす ----------
+  var lastT = 0;
+  function frame(now){
+    requestAnimationFrame(frame);
+    if (!lastT) { lastT = now; return; }
+    var dt = Math.min(0.05, (now - lastT) / 1000);
+    lastT = now;
+    if (st === 'play' && started) {
+      left -= dt;
+      if (left <= 0) { left = 0; syncBar(); finish(); return; }
+      syncBar();
+    }
+  }
+
+  function boot(saved){
+    loadBest();
+    var btns0 = levelsEl.getElementsByTagName('button');
+    for (var k0 = 0; k0 < btns0.length; k0++) btns0[k0].classList.toggle('on', k0 === levelIdx);
+    if (saved && saved.best > best) { best = saved.best; saveBest(); }
+    showTitle();
+    syncBar();
+    requestAnimationFrame(frame);
+  }
+  try {
+    var hot = window.claude && window.claude.hot;
+    if (hot && hot.snapshot) hot.snapshot(function(){ return { best: best }; });
+    if (hot && hot.ready) hot.ready(boot);
+    else boot((hot && hot.data) || {});
+  } catch(e){ boot({}); }
+})();
+</script>
+
+</body>
+</html>
