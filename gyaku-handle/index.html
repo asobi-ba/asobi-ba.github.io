@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="トレーラーを枠に入れるバック駐車。運転席とミラーからの視点つき。折れ角110度でジャックナイフ。">
+  <meta name="description" content="トレーラーを枠に入れるバック駐車。運転席とミラーからの視点、ディーゼルのエンジン音とバックブザーつき。">
   <style>
     /* 単体のページとして成立させるための最低限の土台 */
     :root{
@@ -115,6 +115,8 @@
   .bar .sp{flex:1}
   .bar .t .v{font-size:25px;color:var(--amber)}
   .bar .fold .v.warn{color:var(--ng)}
+  .bar .off2 .v.ok, .bar .tilt .v.ok{color:var(--ok)}
+  .bar .off2 .v.warn, .bar .tilt .v.warn{color:var(--ng)}
 
   .vw{
     font-family:'Zen Kaku Gothic New',sans-serif;font-size:11px;font-weight:700;
@@ -126,6 +128,20 @@
   .vw:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
   .vw:disabled{opacity:.42;cursor:default}
   .vw:disabled:hover{color:var(--amber);border-color:var(--amber)}
+
+  .vol{display:flex;flex-direction:column;gap:2px}
+  .vol input{
+    -webkit-appearance:none;appearance:none;width:82px;height:4px;
+    background:var(--line);border-radius:2px;outline:none;cursor:pointer;
+  }
+  .vol input::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;
+    background:var(--amber);cursor:pointer;border:none;
+  }
+  .vol input::-moz-range-thumb{
+    width:13px;height:13px;border-radius:50%;background:var(--amber);cursor:pointer;border:none;
+  }
+  .vol input:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
 
   .board{flex:1 1 auto;min-height:0;position:relative}
   .board canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -210,9 +226,13 @@
       <div class="sheet" id="sheet">
         <div class="bar">
           <div class="cell t"><span class="k">ジカン</span><span class="v" id="vTime">0.0</span></div>
+          <div class="cell"><span class="k">ワクマデ</span><span class="v sm" id="vAlong">--</span></div>
+          <div class="cell off2"><span class="k">ヨコズレ</span><span class="v sm" id="vLat">--</span></div>
+          <div class="cell tilt"><span class="k">カタムキ</span><span class="v sm" id="vTilt">--</span></div>
           <div class="cell fold"><span class="k">オレカク</span><span class="v sm" id="vFold">0°</span></div>
           <div class="cell"><span class="k">セッショク</span><span class="v sm" id="vHit">0</span></div>
           <div class="sp"></div>
+          <label class="vol"><span class="k">オト</span><input id="volSl" type="range" min="0" max="100" step="5" value="55" aria-label="音量"></label>
           <button class="vw" id="viewBtn" type="button">視点　上から</button>
           <div class="cell"><span class="k">サイタン</span><span class="v sm" id="vBest">--</span></div>
         </div>
@@ -232,7 +252,9 @@
           <div class="tip" id="veilTip">
             バックでハンドルを右へ切ると、荷台の尻は<b>左</b>へ出ます。<br>
             折れ角が<b>110度</b>になると、それ以上は下がれません。前へ出して切り返します。<br>
-            枠に収まったところで<b>止まれば</b>入庫です。
+            枠に収まったところで<b>止まれば</b>入庫です。<br>
+            上の数字で<b>枠まで・横ずれ・傾き</b>が分かります。画面をなぞると首が振れます。<br>
+            <b>音が出ます</b>（エンジン・バックブザー・エア）。音量は上のつまみで。
           </div>
           <button class="go" id="goBtn" type="button">はじめる</button>
         </div>
@@ -247,6 +269,7 @@
     <span>離すと止まる</span>
     <span>R＝やり直し</span>
     <span>V＝視点の切り替え</span>
+    <span>QとE／画面をなぞる＝首を振る</span>
     <span>スマホは下のボタン</span>
   </div>
 </div>
@@ -324,6 +347,208 @@
   var stageIdx = 0;
   function S(){ return STAGES[stageIdx]; }
 
+  // ================= 音 =================
+  // 音源ファイルは使わず、波形をその場で作る
+  var actx = null, master = null, engSrc = null, engGain = null;
+  var airBus = null, beepBus = null;
+  var vol = 0.55;
+  var beepPhase = 0, beepGate = null;
+  var moveMax = 0, hissCool = 0;   // 走ってから止まったときにエアを抜く
+
+  // ディーゼル一巡ぶんの波形。爆発の連なり＋低いうなり＋わずかな空気音
+  function makeEngineData(sr){
+    var FIRE = 30;                 // 元にする爆発の回数／秒
+    var N = 12;                    // つなぎ目が目立たないよう12発ぶんで一巡
+    var len = Math.round(sr * N / FIRE);
+    var d = new Float32Array(len);
+    var period = sr / FIRE;
+
+    // 爆発の粒
+    for (var k = 0; k < N; k++){
+      var at = Math.round(k * period);
+      var amp = 0.78 + 0.22 * Math.sin(k * 2.1);      // 気筒ごとのばらつき
+      var dur = Math.round(sr * 0.034);
+      for (var i = 0; i < dur; i++){
+        var idx = (at + i) % len;
+        var e = Math.exp(-i / (sr * 0.0075));
+        var t2 = i / sr;
+        var v = 0;
+        v += Math.sin(2*Math.PI*58*t2) * 0.55;
+        v += Math.sin(2*Math.PI*116*t2) * 0.24;
+        v += Math.sin(2*Math.PI*178*t2) * 0.11;
+        v += (Math.random()*2 - 1) * 0.30;
+        d[idx] += v * e * amp;
+      }
+    }
+    // 低いうなり
+    for (var i2 = 0; i2 < len; i2++){
+      var t3 = i2 / sr;
+      d[i2] += Math.sin(2*Math.PI*FIRE*t3) * 0.22;
+      d[i2] += Math.sin(2*Math.PI*(FIRE/2)*t3) * 0.16;
+      d[i2] += Math.sin(2*Math.PI*(FIRE*2)*t3 + 0.7) * 0.09;
+    }
+    // なまらせる（2次のローパス）
+    var y1 = 0, y2 = 0, a = 0.30;
+    for (var i3 = 0; i3 < len; i3++){
+      y1 += a * (d[i3] - y1);
+      y2 += a * (y1 - y2);
+      d[i3] = y2;
+    }
+    // つなぎ目をなめらかに
+    var fade = Math.round(sr * 0.004);
+    for (var i4 = 0; i4 < fade; i4++){
+      var g = i4 / fade;
+      d[i4] *= g;
+      d[len-1-i4] = d[len-1-i4] * g + d[fade-1-i4] * (1-g);
+    }
+    // 音量をそろえる
+    var pk = 0;
+    for (var i5 = 0; i5 < len; i5++) pk = Math.max(pk, Math.abs(d[i5]));
+    if (pk > 0){ var sc = 0.85 / pk; for (var i6 = 0; i6 < len; i6++) d[i6] *= sc; }
+    return d;
+  }
+
+  // 空気が抜ける音（プシュー）
+  function makeAirData(sr, dur){
+    var len = Math.round(sr * dur);
+    var d = new Float32Array(len);
+    var y = 0;
+    for (var i = 0; i < len; i++){
+      var t2 = i / sr;
+      var e = Math.min(1, t2 / 0.012) * Math.exp(-t2 / (dur * 0.30));
+      y += 0.52 * ((Math.random()*2 - 1) - y);          // すこし丸めた雑音
+      d[i] = y * e;
+    }
+    return norm(d, 0.80);
+  }
+
+  // ぶつかった音
+  function makeThudData(sr){
+    var dur = 0.30, len = Math.round(sr * dur);
+    var d = new Float32Array(len);
+    var y = 0;
+    for (var i = 0; i < len; i++){
+      var t2 = i / sr;
+      var e = Math.exp(-t2 / 0.055);
+      y += 0.16 * ((Math.random()*2 - 1) - y);
+      d[i] = (y * 0.7 + Math.sin(2*Math.PI*78*t2) * 0.55 + Math.sin(2*Math.PI*128*t2) * 0.25) * e;
+    }
+    return norm(d, 0.92);
+  }
+
+  // いちばん大きいところを pk にそろえる（雑音まじりなので毎回ばらつく）
+  function norm(d, pk){
+    var m = 0;
+    for (var i = 0; i < d.length; i++){ var v = Math.abs(d[i]); if (v > m) m = v; }
+    if (m > 0){ var sc = pk / m; for (var j = 0; j < d.length; j++) d[j] *= sc; }
+    return d;
+  }
+
+  function buf(data){
+    var b = actx.createBuffer(1, data.length, actx.sampleRate);
+    b.getChannelData(0).set(data);
+    return b;
+  }
+
+  var airBuf = null, thudBuf = null;
+
+  function audioInit(){
+    if (actx) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { actx = new AC(); } catch(e){ actx = null; return; }
+
+    master = actx.createGain();
+    master.gain.value = vol * 0.68;   // 全部同時に鳴っても割れない余裕
+    master.connect(actx.destination);
+
+    // エンジン
+    engGain = actx.createGain();
+    engGain.gain.value = 0;
+    var lp = actx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.7;
+    engGain.connect(lp); lp.connect(master);
+
+    engSrc = actx.createBufferSource();
+    engSrc.buffer = buf(makeEngineData(actx.sampleRate));
+    engSrc.loop = true;
+    engSrc.playbackRate.value = 1;
+    engSrc.connect(engGain);
+    try { engSrc.start(0); } catch(e){}
+
+    airBus = actx.createGain(); airBus.gain.value = 0.55; airBus.connect(master);
+    beepBus = actx.createGain(); beepBus.gain.value = 0.16; beepBus.connect(master);
+
+    airBuf = buf(makeAirData(actx.sampleRate, 0.55));
+    thudBuf = buf(makeThudData(actx.sampleRate));
+  }
+
+  function play(b, bus, rate, gain){
+    if (!actx || !b) return;
+    var s2 = actx.createBufferSource();
+    s2.buffer = b;
+    if (rate) s2.playbackRate.value = rate;
+    var g = actx.createGain();
+    g.gain.value = (gain === undefined) ? 1 : gain;
+    s2.connect(g); g.connect(bus);
+    try { s2.start(0); } catch(e){}
+  }
+
+  // 「ピー」を一回
+  function beep(){
+    if (!actx) return;
+    var o = actx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = 1050;
+    var g = actx.createGain();
+    var t0 = actx.currentTime;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(1, t0 + 0.008);
+    g.gain.setValueAtTime(1, t0 + 0.26);
+    g.gain.linearRampToValueAtTime(0, t0 + 0.30);
+    o.connect(g); g.connect(beepBus);
+    try { o.start(t0); o.stop(t0 + 0.32); } catch(e){}
+  }
+
+  // 毎こま、音を今の状態に合わせる
+  function audioStep(dt){
+    if (!actx) return;
+    var playing = (st === 'play');
+    var sp = Math.abs(vel);
+
+    // 回転数：止まっていて650、いっぱいで1250くらい
+    var load = (key.f || key.b) ? 1 : 0;
+    var rpm = 650 + (sp / 1.7) * 520 + load * 90;
+    var fire = rpm / 60 * 3;              // 6気筒4サイクルの爆発回数
+    engSrc.playbackRate.value = Math.max(0.6, Math.min(2.6, fire / 30));
+    var want = playing ? (0.30 + Math.min(0.30, sp * 0.18)) : 0;
+    engGain.gain.value += (want - engGain.gain.value) * Math.min(1, dt * 6);
+
+    // バックブザー
+    if (playing && key.b){
+      beepPhase -= dt;
+      if (beepPhase <= 0){ beep(); beepPhase = 0.72; }
+    } else {
+      beepPhase = 0;
+    }
+
+    // 止まったときのエア音（そこそこ走ってから止まったら一回）
+    if (hissCool > 0) hissCool -= dt;
+    if (sp > moveMax) moveMax = sp;
+    if (playing && sp < 0.08 && moveMax > 0.60 && hissCool <= 0){
+      play(airBuf, airBus, 0.9 + Math.random()*0.25, 0.7);
+      hissCool = 1.0;
+      moveMax = 0;
+    }
+    if (!playing) moveMax = 0;
+  }
+
+  function setVol(v){
+    vol = Math.max(0, Math.min(1, v));
+    if (master) master.gain.value = vol * 0.68;
+    try { localStorage.setItem('gyaku.vol', String(Math.round(vol*100))); } catch(e){}
+  }
+
   // ================= 部品 =================
   var cv = document.getElementById('cv');
   var board = document.getElementById('board');
@@ -337,20 +562,27 @@
   var vTime = document.getElementById('vTime');
   var vFold = document.getElementById('vFold');
   var vHit = document.getElementById('vHit');
+  var vAlong = document.getElementById('vAlong');
+  var vLat = document.getElementById('vLat');
+  var vTilt = document.getElementById('vTilt');
   var vBest = document.getElementById('vBest');
   var bL = document.getElementById('bL');
   var bF = document.getElementById('bF');
   var bB = document.getElementById('bB');
   var viewBtn = document.getElementById('viewBtn');
+  var volSl = document.getElementById('volSl');
   var bR = document.getElementById('bR');
 
   // ================= 状態 =================
   var st = 'title';
-  var rig, steer, vel, t, hits, hitCool, tracks, shake, doneHold;
+  var rig, steer, vel, t, hits, hitCool, tracks, shake, doneHold, touching;
   var bests = [0,0,0];
   var key = { l:false, r:false, f:false, b:false };
   var W = 0, H = 0, scale = 1, ox = 0, oy = 0;
   var view = 'top';
+  var look = 0;       // 首を振った角度
+  var lookKey = 0;    // -1 左 / +1 右
+  var dragX = null;
 
   function loadBest(){
     try{
@@ -378,7 +610,7 @@
   function reset(){
     var s = S().start;
     rig = { x:s.x, y:s.y, a1:s.a, a2:s.a };
-    steer = 0; vel = 0; t = 0; hits = 0; hitCool = 0;
+    steer = 0; vel = 0; t = 0; hits = 0; hitCool = 0; touching = false;
     tracks = []; shake = 0; doneHold = 0;
   }
 
@@ -522,9 +754,15 @@
     if (crashed()){
       rig.x = prev.x; rig.y = prev.y; rig.a1 = prev.a1; rig.a2 = prev.a2;
       vel = 0;
-      if (hitCool <= 0){ hits++; shake = 0.22; hitCool = 0.7; }
+      // 当たり続けているあいだは数えない。いったん離れてから当たったら1回
+      if (!touching){
+        hits++; shake = 0.22;
+        play(thudBuf, master, 0.85 + Math.random()*0.3, 0.45);
+      }
+      touching = true; hitCool = 0.25;
+    } else {
+      if (hitCool > 0) hitCool -= dt; else touching = false;
     }
-    if (hitCool > 0) hitCool -= dt;
     if (shake > 0) shake -= dt;
 
     // 轍
@@ -601,7 +839,7 @@
       yaw = Math.atan2(ty - cy, tx - cx);
       pitch = -Math.atan2(m.up, Math.hypot(tx - cx, ty - cy)) * 0.85;  // 地面を見下ろす
     } else {
-      yaw = rig.a1; pitch = m.pitch;
+      yaw = rig.a1 + look; pitch = m.pitch;
     }
     return { x:cx, y:cy, z:m.up, yaw:yaw, pitch:pitch, fov:m.fov, flip: !!m.aim };
   }
@@ -703,6 +941,25 @@
     ctx.moveTo(cx + focal*a.X/a.Z,  cy - focal*a.Y/a.Z);
     ctx.lineTo(cx + focal*b2.X/b2.Z, cy - focal*b2.Y/b2.Z);
     ctx.strokeStyle = col; ctx.lineWidth = lw || 1; ctx.stroke();
+  }
+
+  // 立体の中に文字を置く
+  function text3(c, vp, P, str, sizeM, col){
+    var q = toCam(c, P);
+    if (q.Z < NEAR * 3) return;
+    var focal = (vp.h/2) / Math.tan(c.fov/2);
+    var px2 = vp.x + vp.w/2 + focal*q.X/q.Z;
+    var py2 = vp.y + vp.h/2 - focal*q.Y/q.Z;
+    var fs = focal * sizeM / q.Z;
+    var cap = vp.h * 0.085;
+    if (fs < 6.5) return;
+    if (fs > cap) fs = cap;
+    ctx.save();
+    ctx.font = Math.round(fs) + 'px "Roboto Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = col;
+    ctx.fillText(str, px2, py2);
+    ctx.restore();
   }
 
   // 地面に落ちる影
@@ -844,6 +1101,29 @@
       ground3(c, vp, { x:b.wx + dx*t2, y:b.wy + dy*t2, w:0.8, h:0.10, a:b.ang },
         night ? 'rgba(200,129,31,.40)' : 'rgba(200,129,31,.55)');
     }
+    // 枠の入口の柱（ここを狙って尻を入れる）
+    var mx0 = b.wx + dx*b.depth, my0 = b.wy + dy*b.depth;
+    for (var gp = -1; gp <= 1; gp += 2){
+      box3(c, vp, { x:mx0 + nx*b.w/2*gp, y:my0 + ny*b.w/2*gp, w:0.26, h:0.26, a:0 },
+        0, 1.7, '#C8811F', { night:night });
+    }
+
+    // 中心線の距離の目盛り
+    for (var mk = 5; mk <= 15; mk += 5){
+      ground3(c, vp, { x:b.wx + dx*mk, y:b.wy + dy*mk, w:0.16, h:b.w*0.8, a:b.ang },
+        night ? 'rgba(239,237,230,.42)' : 'rgba(239,237,230,.72)');
+      text3(c, vp, { x:b.wx + dx*mk - nx*(b.w/2 + 0.9), y:b.wy + dy*mk - ny*(b.w/2 + 0.9), z:0.05 },
+        mk + 'm', 0.9, night ? 'rgba(239,237,230,.60)' : 'rgba(60,58,52,.75)');
+    }
+
+    // 荷台の尻が向いている先
+    var rr2 = trailerRear();
+    for (var ln = 0.6; ln < 9; ln += 1.4){
+      ground3(c, vp, {
+        x: rr2.x - Math.cos(rig.a2)*ln, y: rr2.y - Math.sin(rig.a2)*ln,
+        w:0.7, h:0.14, a:rig.a2 }, night ? 'rgba(200,129,31,.55)' : 'rgba(200,129,31,.70)');
+    }
+
     // 轍
     for (var i = 1; i < tracks.length; i += 2){
       var tr = tracks[i];
@@ -1005,8 +1285,46 @@
       ctx.textAlign = 'center';
       ctx.fillText('上から（初級のみ）', kx + kw/2, ky - 4);
       ctx.textAlign = 'left';
-      layout();   // 縮尺をもとに戻す
+      // 縮尺だけ戻す。layout() を呼ぶと canvas の大きさを入れ直すことになり、
+      // それまで描いた絵が全部消える（初級の運転席視点が真っ暗になっていた原因）
+      var yy = S().yard;
+      scale = Math.min(W / yy.w, H / yy.h);
+      ox = (W - yy.w * scale) / 2;
+      oy = (H - yy.h * scale) / 2;
     }
+
+    // 枠がどちらにあるか（正面の画面の中の位置で示す）
+    (function(){
+      var b2 = S().bay;
+      var tx = b2.wx + Math.cos(b2.ang)*b2.depth*0.5;
+      var ty = b2.wy + Math.sin(b2.ang)*b2.depth*0.5;
+      var ec = makeCam(CAM.eye);
+      var rel = Math.atan2(ty - ec.y, tx - ec.x) - ec.yaw;
+      while (rel > Math.PI) rel -= Math.PI*2;
+      while (rel < -Math.PI) rel += Math.PI*2;
+      var half = Math.atan((W/2) / ((H/2) / Math.tan(ec.fov/2)));
+      var bx, dir = 0;
+      if (Math.abs(rel) <= half){
+        bx = W/2 + Math.tan(rel) * ((H/2) / Math.tan(ec.fov/2));
+      } else {
+        dir = rel > 0 ? 1 : -1;
+        bx = dir > 0 ? W - 16 : 16;
+      }
+      var by = 16;
+      ctx.save();
+      ctx.fillStyle = '#C8811F';
+      ctx.beginPath();
+      if (dir === 0){
+        ctx.moveTo(bx, by + 9); ctx.lineTo(bx - 6, by); ctx.lineTo(bx + 6, by);
+      } else {
+        ctx.moveTo(bx + dir*7, by + 4); ctx.lineTo(bx - dir*5, by - 4); ctx.lineTo(bx - dir*5, by + 12);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.font = '9px "Zen Kaku Gothic New", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('ワク', Math.max(22, Math.min(W - 22, bx)), by + 22);
+      ctx.restore();
+    })();
 
     ctx.restore();
     drawWheelGauge(W/2, H - 34);
@@ -1184,6 +1502,17 @@
     vFold.textContent = Math.round(f) + '°';
     vFold.classList.toggle('warn', f >= FOLD_WARN * 180 / Math.PI);
     vHit.textContent = hits;
+
+    var ft = fit();
+    vAlong.textContent = ft.along.toFixed(1) + 'm';
+    var cm = Math.round(ft.lat * 100);
+    vLat.textContent = (cm > 0 ? '右' : cm < 0 ? '左' : '') + Math.abs(cm) + 'cm';
+    vLat.classList.toggle('ok', Math.abs(ft.lat) < 0.45);
+    vLat.classList.toggle('warn', Math.abs(ft.lat) >= 1.2);
+    var dg = ft.da * 180 / Math.PI;
+    vTilt.textContent = (Math.abs(dg) < 0.05 ? '' : dg > 0 ? '右' : '左') + Math.abs(dg).toFixed(1) + '°';
+    vTilt.classList.toggle('ok', Math.abs(dg) < 6);
+    vTilt.classList.toggle('warn', Math.abs(dg) >= 20);
   }
 
   function showTitle(){
@@ -1200,6 +1529,8 @@
   }
 
   function startGame(){
+    audioInit();
+    if (actx && actx.state === 'suspended'){ try { actx.resume(); } catch(e){} }
     reset(); layout();
     st = 'play';
     veil.classList.add('off');
@@ -1255,6 +1586,8 @@
     else if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 's' || e.key === 'S'){ setKey('b', true); e.preventDefault(); }
     else if (e.key === 'r' || e.key === 'R'){ if (st === 'play'){ reset(); paint(); } }
     else if (e.key === 'v' || e.key === 'V'){ setView(view === 'cab' ? 'top' : 'cab'); }
+    else if (e.key === 'q' || e.key === 'Q'){ lookKey = -1; e.preventDefault(); }
+    else if (e.key === 'e' || e.key === 'E'){ lookKey = 1; e.preventDefault(); }
     else if (e.key === 'Enter' && st !== 'play'){ startGame(); e.preventDefault(); }
   });
   window.addEventListener('keyup', function(e){
@@ -1262,8 +1595,9 @@
     else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') setKey('r', false);
     else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') setKey('f', false);
     else if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 's' || e.key === 'S') setKey('b', false);
+    else if (e.key === 'q' || e.key === 'Q' || e.key === 'e' || e.key === 'E') lookKey = 0;
   });
-  window.addEventListener('blur', function(){ key.l = key.r = key.f = key.b = false; paint(); });
+  window.addEventListener('blur', function(){ key.l = key.r = key.f = key.b = false; lookKey = 0; dragX = null; paint(); });
 
   function hold(el, k){
     el.addEventListener('pointerdown', function(e){
@@ -1287,6 +1621,24 @@
     layout(); draw();
   }
   viewBtn.addEventListener('click', function(){ setView(view === 'cab' ? 'top' : 'cab'); });
+
+  // 画面をなぞると首が振れる
+  cv.style.touchAction = 'none';
+  cv.addEventListener('pointerdown', function(e){
+    if (view !== 'cab') return;
+    dragX = e.clientX;
+    if (cv.setPointerCapture) { try{ cv.setPointerCapture(e.pointerId); }catch(err){} }
+  });
+  cv.addEventListener('pointermove', function(e){
+    if (dragX === null) return;
+    look -= (e.clientX - dragX) * 0.006;
+    if (look > 2.3) look = 2.3;
+    if (look < -2.3) look = -2.3;
+    dragX = e.clientX;
+  });
+  function dragEnd(){ dragX = null; }
+  cv.addEventListener('pointerup', dragEnd);
+  cv.addEventListener('pointercancel', dragEnd);
 
   goBtn.addEventListener('click', function(){ startGame(); });
 
@@ -1320,17 +1672,36 @@
     if (!lastT) lastT = now;
     var dt = Math.min(0.1, (now - lastT) / 1000);
     lastT = now;
+    // 首振り（押している間まわり、離すと戻る）
+    if (lookKey !== 0){
+      look += lookKey * 1.9 * dt;
+      if (look > 2.3) look = 2.3;
+      if (look < -2.3) look = -2.3;
+    } else if (dragX === null && look !== 0){
+      var back = 3.2 * dt;
+      if (Math.abs(look) <= back) look = 0;
+      else look -= Math.sign(look) * back;
+    }
+
     if (st === 'play'){
       acc += dt;
       while (acc >= 1/60){ step(1/60); acc -= 1/60; if (st !== 'play') break; }
       hud();
     }
+    audioStep(dt);
     draw();
     requestAnimationFrame(frame);
   }
 
+  volSl.addEventListener('input', function(){ setVol(volSl.value / 100); });
+
   function boot(){
     loadBest();
+    try {
+      var sv = localStorage.getItem('gyaku.vol');
+      if (sv !== null){ vol = Math.max(0, Math.min(1, parseInt(sv, 10) / 100)); }
+    } catch(e){}
+    volSl.value = Math.round(vol * 100);
     if (stageIdx > 0){ view = 'cab'; viewBtn.disabled = true; }
     setView(view);
     var btns = levelsEl.getElementsByTagName('button');
