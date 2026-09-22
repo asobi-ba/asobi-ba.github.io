@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="和紙に墨が散る見た目の避けゲー。弾をぎりぎりでかすめるほど点が伸びる。">
+  <meta name="description" content="ミルクティーの中の避けゲー。黒い粒をぎりぎりでかすめるほど点が伸びる。">
   <style>
     /* 単体のページとして成立させるための最低限の土台 */
     :root{
@@ -15,27 +15,28 @@
     img{ max-width:100%; }
     [hidden]{ display:none !important; }
   </style>
-<title>墨流し</title>
+<title>タピオカ</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <style>
   :root{
-    --desk:#DCD2BD;
-    --desk-ink:#2B2620;
-    --desk-dim:#6E6455;
-    --sheet:#EFE7D6;
-    --sumi:#17140F;
+    --desk:#AE875C;          /* まわり＝木の卓（面より一段暗く） */
+    --desk-ink:#2E2013;
+    --desk-dim:#573C21;
+    --sheet:#D9B88A;         /* 飲みもの＝ミルクティー */
+    --sumi:#1A1512;          /* 粒＝タピオカ */
     --shu:#C0391E;
-    --ai:#27496B;
-    --rule:rgba(23,20,15,.16);
-    --sheet-shadow:0 16px 38px rgba(48,38,22,.28);
+    --ai:#5A3A22;
+    --rule:rgba(58,42,28,.18);
+    --sheet-shadow:0 16px 38px rgba(70,48,26,.34);
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --desk:#151210;
-      --desk-ink:#EDE4D2;
-      --desk-dim:#978C79;
-      --rule:rgba(237,228,210,.18);
+      --desk:#1A130D;
+      --desk-ink:#F0DEC4;
+      --desk-dim:#A48B6C;
+      --sheet:#C9A272;
+      --rule:rgba(240,222,196,.20);
       --sheet-shadow:0 16px 44px rgba(0,0,0,.65);
     }
   }
@@ -86,7 +87,7 @@
     position:relative;
     width:300px;height:457px;      /* 起動時に画面の大きさから計算して上書きする */
     background:var(--sheet);
-    border:1px solid rgba(23,20,15,.22);
+    border:1px solid rgba(58,42,28,.26);
     box-shadow:var(--sheet-shadow);
     overflow:hidden;
   }
@@ -95,11 +96,11 @@
     position:absolute;inset:0;pointer-events:none;
     mix-blend-mode:multiply;opacity:.6;
     background-image:
-      radial-gradient(circle at 22% 34%, rgba(122,106,78,.20) 0 1px, transparent 1.6px),
-      radial-gradient(circle at 68% 61%, rgba(122,106,78,.16) 0 1px, transparent 1.6px),
-      radial-gradient(circle at 44% 86%, rgba(122,106,78,.13) 0 1px, transparent 1.6px);
+      radial-gradient(circle at 22% 34%, rgba(90,58,34,.16) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 68% 61%, rgba(90,58,34,.13) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 44% 86%, rgba(90,58,34,.11) 0 1px, transparent 1.6px);
     background-size:37px 43px,53px 47px,29px 31px;
-    box-shadow:inset 0 0 70px rgba(104,86,56,.22);
+    box-shadow:inset 0 0 70px rgba(74,46,24,.26);
   }
 
   /* 上の表示 */
@@ -122,21 +123,21 @@
   .hud .right{text-align:right}
   .dots{display:flex;gap:4px;justify-content:flex-end;padding-top:3px}
   .dots i{width:8px;height:8px;border-radius:50%;background:var(--shu);display:block}
-  .dots i.off{background:transparent;box-shadow:inset 0 0 0 1px rgba(23,20,15,.3)}
+  .dots i.off{background:transparent;box-shadow:inset 0 0 0 1px rgba(26,21,18,.3)}
 
   .gauge{
     position:absolute;left:10px;right:10px;top:62px;height:2px;
-    background:rgba(23,20,15,.14);pointer-events:none;
+    background:rgba(26,21,18,.14);pointer-events:none;
   }
   .gauge i{display:block;height:100%;width:0%;background:var(--ai);transition:width .1s linear}
   .gauge.full i{background:var(--shu)}
 
-  /* 墨流しボタン */
+  /* 一気飲みボタン */
   .bomb{
     position:absolute;right:12px;bottom:12px;
     width:60px;height:60px;border-radius:50%;
     background:transparent;color:var(--sumi);
-    border:1.5px solid rgba(23,20,15,.35);
+    border:1.5px solid rgba(26,21,18,.35);
     font-family:'Shippori Mincho',serif;font-weight:700;font-size:21px;
     opacity:.32;cursor:pointer;
     display:grid;place-items:center;
@@ -151,14 +152,14 @@
     position:absolute;inset:0;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:14px;padding:24px;box-sizing:border-box;text-align:center;
-    background:rgba(239,231,214,.9);color:var(--sumi);
+    background:rgba(217,184,138,.92);color:var(--sumi);
   }
   .veil.off{display:none}
   .veil .big{
     margin:0;font-family:'Shippori Mincho',serif;font-weight:700;
     font-size:clamp(30px,10vw,44px);letter-spacing:.3em;text-indent:.3em;line-height:1.1;
   }
-  .veil p{margin:0;font-size:12.5px;line-height:1.9;color:rgba(23,20,15,.72);max-width:26em}
+  .veil p{margin:0;font-size:12.5px;line-height:1.9;color:rgba(26,21,18,.72);max-width:26em}
   .veil .rules{
     display:flex;flex-direction:column;gap:5px;
     font-size:12px;line-height:1.6;text-align:left;
@@ -198,7 +199,7 @@
     display:grid;place-items:center;cursor:pointer;
     font-size:13px;line-height:1;
     color:var(--sumi);background:transparent;
-    border:1px solid rgba(23,20,15,.35);border-radius:50%;
+    border:1px solid rgba(26,21,18,.35);border-radius:50%;
   }
   .vol.muted .volbtn{color:var(--desk-dim)}
   .volsld{
@@ -218,16 +219,16 @@
 <body>
 <div class="page">
   <div class="masthead">
-    <span class="seal" aria-hidden="true">墨</span>
+    <span class="seal" aria-hidden="true">粒</span>
     <div>
-      <h1>墨流し</h1>
-      <p class="sub">当たらず、かすらせる。和紙の上の避けゲー</p>
+      <h1>タピオカ</h1>
+      <p class="sub">当たらず、かすらせる。ミルクティーの中の避けゲー</p>
     </div>
   </div>
 
   <div class="stage" id="stage">
     <div class="sheet" id="sheet">
-      <canvas id="game" aria-label="墨流し ゲーム画面"></canvas>
+      <canvas id="game" aria-label="タピオカ ゲーム画面"></canvas>
       <div class="grain" aria-hidden="true"></div>
 
       <div class="hud" id="hud">
@@ -257,16 +258,16 @@
         <input class="volsld" id="volSlider" type="range" min="0" max="100" value="80" aria-label="音量">
       </div>
 
-      <button class="bomb" id="bombBtn" type="button" title="墨流し（Space）">墨</button>
+      <button class="bomb" id="bombBtn" type="button" title="一気飲み（Space）">飲</button>
 
       <div class="veil" id="veil">
-        <h2 class="big" id="veilTitle">墨流し</h2>
+        <h2 class="big" id="veilTitle">タピオカ</h2>
         <div class="rules" id="veilBody">
-          <div>黒い墨に<b>当たると</b>ひとつ失う。残りは三つ。</div>
+          <div>黒い粒に<b>当たると</b>ひとつ失う。残りは三つ。</div>
           <div>ぎりぎりをかすめると<b>かすり</b>が増え、点の倍率が上がる。</div>
-          <div>敵を散らすかかすると下の線が溜まる。満ちたら<b>墨</b>で画面ごと散らせる。</div>
+          <div>敵を散らすかかすると下の線が溜まる。満ちたら<b>一気飲み</b>で画面ごと空にできる。</div>
         </div>
-        <p id="veilNote">PCはマウスを動かすだけ。右クリックで墨。スマホは指でなぞる。</p>
+        <p id="veilNote">PCはマウスを動かすだけ。右クリックで一気飲み。スマホは指でなぞる。</p>
         <button class="go" id="goBtn" type="button">はじめる</button>
       </div>
     </div>
@@ -276,7 +277,7 @@
     <span>指でなぞって移動</span>
     <span>矢印キー / WASD</span>
     <span>Shift＝低速</span>
-    <span>右クリック / Space＝墨流し</span>
+    <span>右クリック / Space＝一気飲み</span>
     <span>P＝休み</span>
   </div>
 </div>
@@ -289,7 +290,7 @@
   var ctx = cv.getContext('2d');
   var W = 420, H = 640;
 
-  var PAPER = '#EFE7D6', SUMI = '#17140F', SHU = '#C0391E', AI = '#27496B';
+  var PAPER = '#D9B88A', SUMI = '#1A1512', SHU = '#C0391E', AI = '#5A3A22';   // ミルクティーとタピオカ
   var reduced = false;
   try { reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
 
@@ -610,7 +611,7 @@
         lp2 += ((Math.random() * 2 - 1) - lp2) * 0.10;
         f = 230 * Math.pow(0.18, t / 0.16); ph += f / sr;
         out[i] = (Math.sin(2 * Math.PI * ph) * 0.8 + lp2 * 0.7) * Math.exp(-t / 0.13) * 0.75; }
-    } else if (kind === 'bomb') {                // 墨流し：低くうねって広がる
+    } else if (kind === 'bomb') {                // 一気飲み：低くうねって広がる
       n = Math.floor(sr * 0.75); out = new Float32Array(n);
       var lp3 = 0;
       for (i = 0; i < n; i++){ t = i / sr;
@@ -835,7 +836,7 @@
     var r = cv.getBoundingClientRect();
     return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
   }
-  // 右クリック＝墨流し（PC）。ブラウザのメニューは出さない
+  // 右クリック＝一気飲み（PC）。ブラウザのメニューは出さない
   sheet.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   sheet.addEventListener('pointerdown', function(e){
     if (e.button === 2) { e.preventDefault(); doBomb(); }
@@ -1099,7 +1100,7 @@
         }
       }
     } else if (mode === 'title') {
-      // 見本として墨の粒がゆっくり降る
+      // 見本としてタピオカの粒がゆっくり降る
       if (Math.random() < dt * 5) {
         bullets.push({ x: Math.random()*W, y: -10, vx: (Math.random()-.5)*16, vy: 26 + Math.random()*28, r: 2.4 + Math.random()*3.4, g: false });
       }
@@ -1161,7 +1162,7 @@
       }
     }
 
-    // 粒子・墨流しの輪
+    // 粒子・一気飲みの輪
     for (var p=parts.length-1;p>=0;p--){
       var pa = parts[p];
       pa.x += pa.vx*dt; pa.y += pa.vy*dt;
@@ -1197,12 +1198,12 @@
     ctx.setTransform(scale*dpr, 0, 0, scale*dpr, 0, 0);
     if (shake > 0) ctx.translate((Math.random()-.5)*shake, (Math.random()-.5)*shake);
 
-    // 残像（墨が紙にじわっと消える感じ）
+    // 残像（粒が飲みものに沈む感じ）
     ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(239,231,214,0.34)';
+    ctx.fillStyle = 'rgba(217,184,138,0.34)';   // ミルクティー
     ctx.fillRect(-20, -20, W+40, H+40);
 
-    // 墨流しの輪
+    // 一気飲みの輪
     for (var v=0;v<waves.length;v++){
       var wv = waves[v], t = wv.r / 780;
       ctx.globalAlpha = (1 - t) * 0.5;
@@ -1224,7 +1225,7 @@
       }
       if (e.type === 'boss' && e.hpMax) {
         var w = (W-40) * Math.max(0, e.hp/e.hpMax);
-        ctx.fillStyle = 'rgba(23,20,15,0.16)'; ctx.fillRect(20, H-16, W-40, 3);
+        ctx.fillStyle = 'rgba(26,21,18,0.16)'; ctx.fillRect(20, H-16, W-40, 3);
         ctx.fillStyle = SHU; ctx.fillRect(20, H-16, w, 3);
       }
     }
@@ -1237,7 +1238,7 @@
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // 敵の弾（進む向きに少し伸ばす＝墨の尾）
+    // 敵の弾（進む向きに少し伸ばす＝粒の尾）
     for (var b=0;b<bullets.length;b++){
       var bu = bullets[b];
       var ang = Math.atan2(bu.vy, bu.vx);
@@ -1356,5 +1357,6 @@
   } catch(e){ boot({}); }
 })();
 </script>
+
 </body>
 </html>
