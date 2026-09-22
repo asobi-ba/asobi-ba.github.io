@@ -1,0 +1,26 @@
+{
+  "name": "ブラウザゲーム置き場",
+  "short_name": "ゲーム置き場",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#16151A",
+  "theme_color": "#16151A",
+  "lang": "ja",
+  "description": "インストール不要、リンクを開くだけで遊べる自作のブラウザゲーム。",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
