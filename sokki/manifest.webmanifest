@@ -1,0 +1,16 @@
+{
+  "name": "速記",
+  "short_name": "速記",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
+  "orientation": "any",
+  "background_color": "#15140F",
+  "theme_color": "#15140F",
+  "lang": "ja",
+  "description": "日本語入力（かな漢字変換）で六十秒に何文字書けるかを測るタイピング。初級＝単語・中級＝一文・上級＝長文の三段。"
+}

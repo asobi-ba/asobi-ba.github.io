@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="トレーラーを枠に入れるバック駐車。運転席とミラーからの視点、ディーゼルのエンジン音とバックブザーつき。">
+  <meta name="theme-color" content="#14161A">
+  <!-- スマホで「ホーム画面に追加」すると、上下のバーが消えて全画面で遊べる -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="逆ハンドル">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
   <style>
     /* 単体のページとして成立させるための最低限の土台 */
     :root{
@@ -11,7 +18,7 @@
       padding-top: env(safe-area-inset-top, 0px);
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
-    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#faf9f7; }
+    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#14161A; }
     img{ max-width:100%; }
     [hidden]{ display:none !important; }
   </style>
@@ -52,6 +59,26 @@
   }
 
   html,body{height:100%}
+  /* スマホは上下のバーの出入りで高さが変わる。dvh なら実際に見えている高さになる */
+  @supports (height:100dvh){ html,body{height:100dvh} }
+  body{overscroll-behavior:none}
+
+  /* 全画面のときは上下の飾りを消して、遊ぶ面だけにする */
+  html.fs .masthead, html.fs .legend{display:none}
+  html.fs .page{padding:4px 6px 6px}
+
+  .fsbtn{
+    position:fixed;right:8px;top:8px;z-index:60;
+    width:34px;height:34px;padding:0;cursor:pointer;
+    display:none;align-items:center;justify-content:center;
+    font-family:'Zen Kaku Gothic New',system-ui,sans-serif;
+    font-size:14px;font-weight:700;line-height:1;
+    color:inherit;background:rgba(127,127,127,.20);
+    border:1px solid rgba(127,127,127,.45);border-radius:4px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .fsbtn.on{display:flex}
+  .fsbtn:focus-visible{outline:2px solid currentColor;outline-offset:2px}
   body{
     margin:0;background:var(--yard);color:var(--ink);
     font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',system-ui,sans-serif;
@@ -209,6 +236,7 @@
 </style>
 </head>
 <body>
+<button class="fsbtn" id="fsBtn" type="button" title="全画面" aria-label="全画面にする">全</button>
 <div class="page">
   <div class="masthead">
     <h1>逆ハンドル</h1>
@@ -221,6 +249,7 @@
         <button class="lv on" type="button" data-l="0"><b>一</b><i>ひろい枠</i></button>
         <button class="lv" type="button" data-l="1"><b>二</b><i>ふつうの枠</i></button>
         <button class="lv" type="button" data-l="2"><b>三</b><i>隣あり</i></button>
+        <button class="lv" type="button" data-l="3"><b>試</b><i>方向変換</i></button>
       </div>
 
       <div class="sheet" id="sheet">
@@ -279,16 +308,31 @@
   'use strict';
 
   // ================= 寸法（すべてメートル） =================
-  // トラクタ
-  var T_WB   = 3.80;   // ホイールベース（前軸〜後軸）
-  var T_FOH  = 1.30;   // 前軸より前
-  var T_ROH  = 1.10;   // 後軸より後ろ
-  var T_W    = 2.49;   // 車幅
-  // セミトレーラー
-  var S_KP   = 8.20;   // キングピン〜車軸
-  var S_FOH  = 1.10;   // キングピンより前
-  var S_ROH  = 3.60;   // 車軸より後ろ
-  var S_W    = 2.49;
+  // 二通りの車を使い分ける
+  var VEH = {
+    // 実際の運送用（40フィート級を想定）
+    work: { twb:3.80, tfoh:1.30, troh:1.10, tw:2.49,
+            skp:8.20, sfoh:1.10, sroh:3.60, sw:2.49,
+            name:'運送用（想定）' },
+    // 試験車。法令は「けん引車＝中型自動車（総重量11t未満・第5輪荷重6.5t未満）、
+    // 被けん引車＝最大積載量5t以上」としか定めておらず、長さ・幅・軸距の定めが無い。
+    // 下の数字はその区分に収まるようこちらで置いたもの（＝推測）。
+    test: { twb:3.20, tfoh:1.15, troh:0.85, tw:2.25,
+            skp:4.60, sfoh:0.80, sroh:1.80, sw:2.30,
+            name:'試験車（想定）' }
+  };
+  var T_WB, T_FOH, T_ROH, T_W, S_KP, S_FOH, S_ROH, S_W;
+  function applyVeh(k){
+    var v = VEH[k] || VEH.work;
+    T_WB = v.twb; T_FOH = v.tfoh; T_ROH = v.troh; T_W = v.tw;
+    S_KP = v.skp; S_FOH = v.sfoh; S_ROH = v.sroh; S_W = v.sw;
+  }
+  applyVeh('work');
+  // 連結全長（前バンパー〜荷台の尻）
+  function rigLen(k){
+    var v = VEH[k] || VEH.work;
+    return (v.twb + v.tfoh) + (v.skp + v.sroh);
+  }
 
   var MAX_STEER = 0.70;      // ハンドル最大 約40度
   var STEER_RATE = 0.95;     // ハンドルを切る速さ（ラジアン/秒）
@@ -301,6 +345,21 @@
 
   // ================= 課題 =================
   // bay … 荷台が停まるべき場所。wall＝突き当たりの中心、ang＝停めたときの荷台の向き
+  // ---- 試験の方向変換コース（規則 別表第三・中型免許用コース）----
+  // 幅A=5m（凹部）／幅B=5m（通路）／奥行C=8m／すみ切り半径E=1.5m
+  // 出入口部の長さD＝連結全長以上（実施基準(13)）。ここでは寄せる余地を見て長めに取る
+  var TC = (function(){
+    var L = rigLen('test');              // 連結全長 10.75m
+    var laneW = 5.0, pocW = 5.0, pocC = 8.0, D = Math.max(L, 18);
+    var pocCx = 21.0;                    // 凹部の中心（東西）
+    var laneY0 = 27.5, laneY1 = laneY0 + laneW;
+    return {
+      L:L, laneW:laneW, pocW:pocW, pocC:pocC, D:D, E:1.5,
+      lane:{ x0:pocCx - pocW/2 - D, x1:pocCx + pocW/2 + D, y0:laneY0, y1:laneY1 },
+      pocket:{ x0:pocCx - pocW/2, x1:pocCx + pocW/2, y0:laneY0 - pocC, y1:laneY0 }
+    };
+  })();
+
   // 共通の構内：56m×32m。西の門から入り、南側の建物にバースが並ぶ。
   // bay.ang は「停めたときの荷台の向き」。-90度＝北を向く＝南のバースに尻から入る
   var YARD = { w:56, h:36 };
@@ -341,6 +400,21 @@
       ],
       fast:46.6,
       note:'両隣が埋まっています。振り出す場所がありません。'
+    },
+    {
+      name:'試', sub:'方向変換', exam:true, veh:'test',
+      yard:{ w:TC.lane.x1 + 3, h:40 },
+      bay:{ wx:(TC.pocket.x0 + TC.pocket.x1)/2, wy:TC.pocket.y0,
+            ang:Math.PI/2, w:TC.pocW, depth:TC.pocC },
+      start:{ x:TC.lane.x1 - 8, y:(TC.lane.y0 + TC.lane.y1)/2, a:Math.PI },
+      blocks:[
+        // 凹部の突き当たり（ここだけ固い）
+        { x:(TC.pocket.x0 + TC.pocket.x1)/2, y:TC.pocket.y0 - 0.9,
+          w:TC.pocW + 6, h:1.8, a:0, bldg:1 }
+      ],
+      course:TC,
+      fast:27.8,   // 自動操縦1440通りのうちの最短（実測）
+      note:'けん引免許の技能試験の「方向変換」です。凹部に後退で入り、けん引車と被けん引車を<b>直線の状態で停止</b>させます。コースの線から出ると接輪です。'
     }
   ];
 
@@ -575,7 +649,7 @@
 
   // ================= 状態 =================
   var st = 'title';
-  var rig, steer, vel, t, hits, hitCool, tracks, shake, doneHold, touching;
+  var rig, steer, vel, t, hits, hitCool, tracks, shake, doneHold, touching, lining;
   var bests = [0,0,0];
   var key = { l:false, r:false, f:false, b:false };
   var W = 0, H = 0, scale = 1, ox = 0, oy = 0;
@@ -610,7 +684,7 @@
   function reset(){
     var s = S().start;
     rig = { x:s.x, y:s.y, a1:s.a, a2:s.a };
-    steer = 0; vel = 0; t = 0; hits = 0; hitCool = 0; touching = false;
+    steer = 0; vel = 0; t = 0; hits = 0; hitCool = 0; touching = false; lining = false;
     tracks = []; shake = 0; doneHold = 0;
   }
 
@@ -678,6 +752,23 @@
     }
     return false;
   }
+  // コースの線の外に出ていないか（試験の課題だけ）
+  function inRect(px2, py2, r){
+    return px2 >= r.x0 - 0.02 && px2 <= r.x1 + 0.02 && py2 >= r.y0 - 0.02 && py2 <= r.y1 + 0.02;
+  }
+  function outsideCourse(){
+    var c = S().course;
+    if (!c) return false;
+    var boxes = [tractorBox(), trailerBox()];
+    for (var b = 0; b < 2; b++){
+      var q = corners(boxes[b]);
+      for (var i = 0; i < 4; i++){
+        if (!inRect(q[i].x, q[i].y, c.lane) && !inRect(q[i].x, q[i].y, c.pocket)) return true;
+      }
+    }
+    return false;
+  }
+
   function crashed(){
     var tb = tractorBox(), sb = trailerBox(), bl = S().blocks;
     if (outOfYard(tb) || outOfYard(sb)) return true;
@@ -707,6 +798,15 @@
   }
   function parked(){
     var f = fit();
+    if (S().course){
+      // 試験：荷台が凹部にすべて入り、けん引車と被けん引車が直線であること
+      var q = corners(trailerBox());
+      for (var i = 0; i < 4; i++){
+        if (!inRect(q[i].x, q[i].y, S().course.pocket)) return false;
+      }
+      return Math.abs(angDiff(rig.a1, rig.a2)) < 4 * Math.PI / 180
+          && Math.abs(f.da) < 5 * Math.PI / 180;
+    }
     return f.along > -0.10 && f.along < 1.25
         && Math.abs(f.lat) < 0.45
         && Math.abs(f.da) < 6 * Math.PI / 180;
@@ -762,6 +862,15 @@
       touching = true; hitCool = 0.25;
     } else {
       if (hitCool > 0) hitCool -= dt; else touching = false;
+    }
+
+    // コースの線から出た（試験の課題のみ。止めはしないが数える）
+    if (S().course){
+      if (outsideCourse()){
+        if (!lining){ hits++; lining = true; play(thudBuf, master, 1.3, 0.22); }
+      } else {
+        lining = false;
+      }
     }
     if (shake > 0) shake -= dt;
 
@@ -1101,6 +1210,26 @@
       ground3(c, vp, { x:b.wx + dx*t2, y:b.wy + dy*t2, w:0.8, h:0.10, a:b.ang },
         night ? 'rgba(200,129,31,.40)' : 'rgba(200,129,31,.55)');
     }
+    // 試験コースの線
+    var tc = S().course;
+    if (tc){
+      var lc = night ? 'rgba(239,237,230,.80)' : '#EFEDE6';
+      var LW = 0.15;
+      // 通路の両端（凹部の口だけ空ける）
+      ground3(c, vp, { x:(tc.lane.x0+tc.lane.x1)/2, y:tc.lane.y1, w:tc.lane.x1-tc.lane.x0, h:LW, a:0 }, lc);
+      ground3(c, vp, { x:(tc.lane.x0+tc.pocket.x0)/2, y:tc.lane.y0,
+        w:tc.pocket.x0-tc.lane.x0, h:LW, a:0 }, lc);
+      ground3(c, vp, { x:(tc.pocket.x1+tc.lane.x1)/2, y:tc.lane.y0,
+        w:tc.lane.x1-tc.pocket.x1, h:LW, a:0 }, lc);
+      // 凹部の三辺
+      ground3(c, vp, { x:tc.pocket.x0, y:(tc.pocket.y0+tc.pocket.y1)/2, w:LW, h:tc.pocC, a:0 }, lc);
+      ground3(c, vp, { x:tc.pocket.x1, y:(tc.pocket.y0+tc.pocket.y1)/2, w:LW, h:tc.pocC, a:0 }, lc);
+      ground3(c, vp, { x:(tc.pocket.x0+tc.pocket.x1)/2, y:tc.pocket.y0, w:tc.pocW, h:LW, a:0 }, lc);
+      // 通路の両端（東西の閉じ）
+      ground3(c, vp, { x:tc.lane.x0, y:(tc.lane.y0+tc.lane.y1)/2, w:LW, h:tc.laneW, a:0 }, lc);
+      ground3(c, vp, { x:tc.lane.x1, y:(tc.lane.y0+tc.lane.y1)/2, w:LW, h:tc.laneW, a:0 }, lc);
+    }
+
     // 枠の入口の柱（ここを狙って尻を入れる）
     var mx0 = b.wx + dx*b.depth, my0 = b.wy + dy*b.depth;
     for (var gp = -1; gp <= 1; gp += 2){
@@ -1449,6 +1578,23 @@
     ctx.fillStyle = night ? '#E7E4DA' : '#1F2124';
     ctx.fill();
 
+    // 試験コースの線（上から）
+    var tc2 = S().course;
+    if (tc2){
+      ctx.strokeStyle = night ? 'rgba(239,237,230,.85)' : '#EFEDE6';
+      ctx.lineWidth = Math.max(2, 0.15 * scale);
+      ctx.beginPath();
+      ctx.moveTo(px(tc2.lane.x0), py(tc2.lane.y1)); ctx.lineTo(px(tc2.lane.x1), py(tc2.lane.y1));
+      ctx.moveTo(px(tc2.lane.x0), py(tc2.lane.y0)); ctx.lineTo(px(tc2.pocket.x0), py(tc2.lane.y0));
+      ctx.moveTo(px(tc2.pocket.x1), py(tc2.lane.y0)); ctx.lineTo(px(tc2.lane.x1), py(tc2.lane.y0));
+      ctx.moveTo(px(tc2.pocket.x0), py(tc2.pocket.y1)); ctx.lineTo(px(tc2.pocket.x0), py(tc2.pocket.y0));
+      ctx.lineTo(px(tc2.pocket.x1), py(tc2.pocket.y0));
+      ctx.lineTo(px(tc2.pocket.x1), py(tc2.pocket.y1));
+      ctx.moveTo(px(tc2.lane.x0), py(tc2.lane.y0)); ctx.lineTo(px(tc2.lane.x0), py(tc2.lane.y1));
+      ctx.moveTo(px(tc2.lane.x1), py(tc2.lane.y0)); ctx.lineTo(px(tc2.lane.x1), py(tc2.lane.y1));
+      ctx.stroke();
+    }
+
     // 門（入ってきたところ）
     var g = S().gate;
     if (g){
@@ -1521,7 +1667,17 @@
     veilBody.innerHTML =
       '<p><b>' + S().name + '（' + S().sub + '）</b>　' + S().note + '<br>'
       + '荷台の尻を奥の橙色の線まで入れて、<b>止まれば</b>終わりです。<br>'
-      + '<span style="opacity:.8">機械に総当たりさせたときの最短は <b>' + S().fast.toFixed(1) + '秒</b>。</span></p>';
+      + '<span style="opacity:.8">機械に総当たりさせたときの最短は <b>' + S().fast.toFixed(1) + '秒</b>。</span></p>'
+      + (S().course ? ('<p style="margin-top:8px;font-size:11.5px">'
+        + 'コースは <b>道路交通法施行規則 別表第三</b>（中型免許用）の数字です。'
+        + '凹部 幅5m×奥行8m、通路 幅5m、すみ切り半径1.5m。'
+        + '出入口部の長さは<b>連結全長以上</b>（警察庁 運転免許技能試験実施基準）。<br>'
+        + '<b>車両寸法は法令に定めがありません。</b>けん引車＝中型自動車（総重量11t未満）、'
+        + '被けん引車＝最大積載量5t以上、としか書かれていないため、'
+        + '下の数字は区分に収まるようこちらで置いた<b>想定値</b>です。<br>'
+        + 'トラクタ 全長' + (T_WB+T_FOH+T_ROH).toFixed(2) + 'm・軸距' + T_WB.toFixed(2) + 'm／'
+        + '荷台 全長' + (S_FOH+S_KP+S_ROH).toFixed(2) + 'm／連結全長 '
+        + (T_WB+T_FOH+S_KP+S_ROH).toFixed(2) + 'm</p>') : '');
     veilTip.style.display = '';
     goBtn.textContent = 'はじめる';
     veil.classList.remove('off');
@@ -1613,7 +1769,7 @@
   hold(bL, 'l'); hold(bR, 'r'); hold(bF, 'f'); hold(bB, 'b');
 
   function setView(v){
-    if (stageIdx > 0) v = 'cab';        // 中級からは運転席だけ
+    if (stageIdx === 1 || stageIdx === 2) v = 'cab';   // 中級・上級は運転席だけ（試は練習なので両方可）
     view = v;
     viewBtn.textContent = (v === 'cab') ? '視点　運転席' : '視点　上から';
     viewBtn.classList.toggle('cab', v === 'cab');
@@ -1644,12 +1800,13 @@
 
   function setStage(i){
     stageIdx = Math.max(0, Math.min(STAGES.length - 1, i));
+    applyVeh(S().veh || 'work');
     var btns = levelsEl.getElementsByTagName('button');
     for (var k = 0; k < btns.length; k++) btns[k].classList.toggle('on', k === stageIdx);
     saveBest();
-    if (stageIdx > 0){
+    if (stageIdx === 1 || stageIdx === 2){
       viewBtn.disabled = true;
-      viewBtn.title = '中級からは運転席だけです';
+      viewBtn.title = '中級・上級は運転席だけです';
       setView('cab');
     } else {
       viewBtn.disabled = false;
@@ -1697,12 +1854,13 @@
 
   function boot(){
     loadBest();
+    applyVeh(STAGES[stageIdx].veh || 'work');
     try {
       var sv = localStorage.getItem('gyaku.vol');
       if (sv !== null){ vol = Math.max(0, Math.min(1, parseInt(sv, 10) / 100)); }
     } catch(e){}
     volSl.value = Math.round(vol * 100);
-    if (stageIdx > 0){ view = 'cab'; viewBtn.disabled = true; }
+    if (stageIdx === 1 || stageIdx === 2){ view = 'cab'; viewBtn.disabled = true; }
     setView(view);
     var btns = levelsEl.getElementsByTagName('button');
     for (var k = 0; k < btns.length; k++) btns[k].classList.toggle('on', k === stageIdx);
@@ -1713,5 +1871,41 @@
 })();
 </script>
 
+<script>
+// ===== スマホの全画面 =====
+// iPhone の Safari は、動画以外の全画面に対応していない。その場合はボタンを出さず、
+// 「ホーム画面に追加」から開けば上下のバーが消える（公開サイト側で手当てしてある）。
+(function(){
+  var el = document.documentElement;
+  var btn = document.getElementById('fsBtn');
+  if (!btn) return;
+  var req = el.requestFullscreen || el.webkitRequestFullscreen;
+  var exi = document.exitFullscreen || document.webkitExitFullscreen;
+  if (!req) return;                       // 対応していない端末ではボタンを出さない
+  btn.classList.add('on');
+
+  function isFs(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function sync(){
+    var on = isFs();
+    el.classList.toggle('fs', on);
+    btn.textContent = on ? '×' : '全';
+    btn.title = on ? '全画面をやめる' : '全画面';
+    btn.setAttribute('aria-label', btn.title);
+    // 作品側に大きさを測り直させる
+    setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 60);
+    setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 360);
+  }
+  btn.addEventListener('click', function(e){
+    e.preventDefault();
+    try{
+      if (isFs()) { if (exi) exi.call(document); }
+      else { req.call(el, { navigationUI:'hide' }); }
+    }catch(err){}
+  });
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+  sync();
+})();
+</script>
 </body>
 </html>

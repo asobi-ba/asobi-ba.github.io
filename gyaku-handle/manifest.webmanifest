@@ -1,0 +1,16 @@
+{
+  "name": "逆ハンドル",
+  "short_name": "逆ハンドル",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
+  "orientation": "any",
+  "background_color": "#14161A",
+  "theme_color": "#14161A",
+  "lang": "ja",
+  "description": "トレーラーを枠に入れるバック駐車。運転席とミラーからの視点、ディーゼルのエンジン音とバックブザーつき。"
+}

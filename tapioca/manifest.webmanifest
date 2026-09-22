@@ -1,0 +1,16 @@
+{
+  "name": "タピオカ",
+  "short_name": "タピオカ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
+  "orientation": "any",
+  "background_color": "#AE875C",
+  "theme_color": "#AE875C",
+  "lang": "ja",
+  "description": "ミルクティーの中の避けゲー。黒い粒をぎりぎりでかすめるほど点が伸びる。"
+}

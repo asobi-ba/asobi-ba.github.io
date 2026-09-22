@@ -1,0 +1,16 @@
+{
+  "name": "黒い轍",
+  "short_name": "黒い轍",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
+  "orientation": "any",
+  "background_color": "#12131A",
+  "theme_color": "#12131A",
+  "lang": "ja",
+  "description": "左右のハンドルだけで走る夜の峠のドリフトタイムアタック。滑った跡が路面に黒く残る。"
+}

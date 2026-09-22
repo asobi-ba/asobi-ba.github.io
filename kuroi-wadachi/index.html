@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="左右のハンドルだけで走る夜の峠のドリフトタイムアタック。滑った跡が路面に黒く残る。">
+  <meta name="theme-color" content="#12131A">
+  <!-- スマホで「ホーム画面に追加」すると、上下のバーが消えて全画面で遊べる -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="黒い轍">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
   <style>
     /* 単体のページとして成立させるための最低限の土台 */
     :root{
@@ -11,7 +18,7 @@
       padding-top: env(safe-area-inset-top, 0px);
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
-    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#faf9f7; }
+    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#12131A; }
     img{ max-width:100%; }
     [hidden]{ display:none !important; }
   </style>
@@ -33,6 +40,26 @@
     --red:#E0453A;
   }
   html,body{height:100%}
+  /* スマホは上下のバーの出入りで高さが変わる。dvh なら実際に見えている高さになる */
+  @supports (height:100dvh){ html,body{height:100dvh} }
+  body{overscroll-behavior:none}
+
+  /* 全画面のときは上下の飾りを消して、遊ぶ面だけにする */
+  html.fs .masthead, html.fs .legend{display:none}
+  html.fs .page{padding:4px 6px 6px}
+
+  .fsbtn{
+    position:fixed;right:8px;top:8px;z-index:60;
+    width:34px;height:34px;padding:0;cursor:pointer;
+    display:none;align-items:center;justify-content:center;
+    font-family:'Zen Kaku Gothic New',system-ui,sans-serif;
+    font-size:14px;font-weight:700;line-height:1;
+    color:inherit;background:rgba(127,127,127,.20);
+    border:1px solid rgba(127,127,127,.45);border-radius:4px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .fsbtn.on{display:flex}
+  .fsbtn:focus-visible{outline:2px solid currentColor;outline-offset:2px}
   body{
     margin:0;background:var(--night);color:var(--text);
     font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',system-ui,sans-serif;
@@ -159,6 +186,7 @@
 </style>
 </head>
 <body>
+<button class="fsbtn" id="fsBtn" type="button" title="全画面" aria-label="全画面にする">全</button>
 <div class="page">
   <div class="masthead">
     <h1>黒い轍</h1>
@@ -796,6 +824,43 @@
     if (hot && hot.ready) hot.ready(boot);
     else boot((hot && hot.data) || {});
   } catch(e){ boot({}); }
+})();
+</script>
+
+<script>
+// ===== スマホの全画面 =====
+// iPhone の Safari は、動画以外の全画面に対応していない。その場合はボタンを出さず、
+// 「ホーム画面に追加」から開けば上下のバーが消える（公開サイト側で手当てしてある）。
+(function(){
+  var el = document.documentElement;
+  var btn = document.getElementById('fsBtn');
+  if (!btn) return;
+  var req = el.requestFullscreen || el.webkitRequestFullscreen;
+  var exi = document.exitFullscreen || document.webkitExitFullscreen;
+  if (!req) return;                       // 対応していない端末ではボタンを出さない
+  btn.classList.add('on');
+
+  function isFs(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function sync(){
+    var on = isFs();
+    el.classList.toggle('fs', on);
+    btn.textContent = on ? '×' : '全';
+    btn.title = on ? '全画面をやめる' : '全画面';
+    btn.setAttribute('aria-label', btn.title);
+    // 作品側に大きさを測り直させる
+    setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 60);
+    setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 360);
+  }
+  btn.addEventListener('click', function(e){
+    e.preventDefault();
+    try{
+      if (isFs()) { if (exi) exi.call(document); }
+      else { req.call(el, { navigationUI:'hide' }); }
+    }catch(err){}
+  });
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+  sync();
 })();
 </script>
 </body>

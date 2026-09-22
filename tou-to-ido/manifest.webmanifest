@@ -1,0 +1,16 @@
+{
+  "name": "塔と井戸",
+  "short_name": "塔と井戸",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
+  "orientation": "any",
+  "background_color": "#101018",
+  "theme_color": "#101018",
+  "lang": "ja",
+  "description": "ファミコン風ドット絵の2本立て。塔をひたすらのぼるか、井戸をひたすらおりるか。"
+}
