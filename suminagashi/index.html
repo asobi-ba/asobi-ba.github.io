@@ -185,6 +185,13 @@
     font-size:11px;color:var(--desk-dim);line-height:1.5;
   }
   .legend span{white-space:nowrap}
+  .bgm{
+    font-family:'Zen Kaku Gothic New',sans-serif;font-size:11px;letter-spacing:.06em;
+    padding:3px 10px;cursor:pointer;color:var(--desk-ink);
+    background:transparent;border:1px solid var(--rule);border-radius:0;
+  }
+  .bgm.off{color:var(--desk-dim)}
+  .bgm:focus-visible{outline:2px solid var(--ai);outline-offset:2px}
   @media (max-height:600px){
     .masthead .sub{display:none}
     .legend{font-size:10px}
@@ -247,6 +254,7 @@
   </div>
 
   <div class="legend">
+    <button class="bgm" id="bgmBtn" type="button">♪ 音 入</button>
     <span>指でなぞって移動</span>
     <span>矢印キー / WASD</span>
     <span>Shift＝低速</span>
@@ -310,6 +318,147 @@
   window.addEventListener('resize', layout);
   window.addEventListener('orientationchange', layout);
   try { new ResizeObserver(layout).observe(stage); } catch(e){}
+
+  // ---------- 音楽（音源ファイルは使わず、その場で波形を作る） ----------
+  var bgmBtn = document.getElementById('bgmBtn');
+  var AC = null, master = null, dryG = null, wetG = null, musicOn = true;
+  var plucks = {}, schedId = 0, nextT = 0, stepN = 0, melodyIdx = 4;
+  var STEP = 0.40;                 // 1拍の長さ（秒）
+  var SCALE = [0, 1, 5, 7, 8];     // 都節音階（半音の並び）
+  var ROOT  = 146.83;              // レ（D3）
+
+  function scaleFreq(i){
+    var n = SCALE.length;
+    var oct = Math.floor(i / n), d = i - oct * n;
+    return ROOT * Math.pow(2, SCALE[d] / 12 + oct);
+  }
+
+  // 撥いた弦の波形をその場で計算する（カープラス・ストロング）
+  function makePluckData(sr, freq, dur, damp){
+    var n = Math.max(1, Math.floor(sr * dur));
+    var out = new Float32Array(n);
+    var N = Math.max(2, Math.round(sr / freq));
+    var ring = new Float32Array(N), i, j;
+    for (i = 0; i < N; i++) ring[i] = Math.random() * 2 - 1;
+    var idx = 0;
+    for (j = 0; j < n; j++){
+      var nxt = (idx + 1) % N;
+      out[j] = ring[idx];
+      ring[idx] = (ring[idx] + ring[nxt]) * 0.5 * damp;
+      idx = nxt;
+    }
+    var fade = Math.floor(sr * 0.06);
+    for (j = 0; j < n; j++){
+      var e = 0.6;
+      if (j < 40) e *= j / 40;                   // 頭の衝撃をやわらげる
+      if (j > n - fade) e *= (n - j) / fade;     // 尻切れを防ぐ
+      out[j] *= e;
+    }
+    return out;
+  }
+  function pluckBuffer(freq){
+    var key = Math.round(freq);
+    if (plucks[key]) return plucks[key];
+    var data = makePluckData(AC.sampleRate, freq, 2.4, 0.9965);
+    var buf = AC.createBuffer(1, data.length, AC.sampleRate);
+    buf.getChannelData(0).set(data);
+    plucks[key] = buf;
+    return buf;
+  }
+  function makeReverb(){
+    var sr = AC.sampleRate, len = Math.floor(sr * 2.1);
+    var ir = AC.createBuffer(2, len, sr);
+    for (var c = 0; c < 2; c++){
+      var d = ir.getChannelData(c);
+      for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
+    }
+    var cv = AC.createConvolver(); cv.buffer = ir; return cv;
+  }
+  function playNote(freq, t, vol){
+    var src = AC.createBufferSource(); src.buffer = pluckBuffer(freq);
+    var lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+    var g = AC.createGain(); g.gain.value = vol;
+    src.connect(lp); lp.connect(g); g.connect(dryG); g.connect(wetG);
+    src.start(t);
+  }
+  function drum(t, vol){
+    var o = AC.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(108, t);
+    o.frequency.exponentialRampToValueAtTime(44, t + 0.2);
+    var g = AC.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 0.34);
+    o.connect(g); g.connect(dryG); g.connect(wetG);
+    o.start(t); o.stop(t + 0.36);
+  }
+  function drone(){
+    var g = AC.createGain(); g.gain.value = 0.055;
+    var o1 = AC.createOscillator(); o1.type = 'sine';     o1.frequency.value = ROOT / 2;
+    var o2 = AC.createOscillator(); o2.type = 'triangle'; o2.frequency.value = ROOT / 2 * 1.4983;
+    var lfo = AC.createOscillator(); lfo.frequency.value = 0.06;
+    var lg = AC.createGain(); lg.gain.value = 0.022;
+    lfo.connect(lg); lg.connect(g.gain);
+    o1.connect(g); o2.connect(g); g.connect(dryG); g.connect(wetG);
+    o1.start(); o2.start(); lfo.start();
+  }
+
+  // どの拍で何を鳴らすか。音を出さずに単体で試せるように分けてある
+  function noteFor(step, intensity, prevIdx, rnd){
+    var pos = step % 16;
+    var strong = (pos === 0 || pos === 6 || pos === 10);
+    var p = strong ? 0.92 : 0.14 + 0.26 * intensity;
+    if (rnd() > p) return null;
+    var move = [-2,-1,-1,0,1,1,2][Math.floor(rnd() * 7)];
+    var idx = prevIdx + move;
+    if (idx < 0) idx = 0;
+    if (idx > 12) idx = 12;
+    return { idx: idx, vol: (strong ? 0.5 : 0.3) + 0.14 * intensity, hi: rnd() < 0.16 * intensity };
+  }
+  function schedule(){
+    if (!AC || !musicOn) return;
+    var ahead = AC.currentTime + 0.3;
+    var guard = 0;
+    while (nextT < ahead && guard++ < 40) {
+      var inten = Math.min(1, (mult() - 1) / 5);
+      var n = noteFor(stepN, inten, melodyIdx, Math.random);
+      if (n) { melodyIdx = n.idx; playNote(scaleFreq(n.idx) * (n.hi ? 2 : 1), nextT, n.vol); }
+      if (stepN % 16 === 0) drum(nextT, 0.5);
+      else if (stepN % 16 === 10 && inten > 0.45) drum(nextT, 0.26);
+      stepN++;
+      nextT += STEP;
+    }
+  }
+  function audioStart(){
+    if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+    if (!musicOn) return;
+    try {
+      var A = window.AudioContext || window.webkitAudioContext;
+      if (!A) return;
+      AC = new A();
+      master = AC.createGain(); master.gain.value = 0; master.connect(AC.destination);
+      dryG = AC.createGain(); dryG.gain.value = 0.85; dryG.connect(master);
+      var rev = makeReverb();
+      wetG = AC.createGain(); wetG.gain.value = 0.3; wetG.connect(rev); rev.connect(master);
+      drone();
+      nextT = AC.currentTime + 0.15; stepN = 0;
+      schedId = setInterval(schedule, 40);
+      master.gain.linearRampToValueAtTime(0.9, AC.currentTime + 3.0);   // ふわっと入る
+      try { window.__bgm = { ctx: AC, master: master }; } catch(e){}
+    } catch(e){ AC = null; }
+  }
+  function setMusic(on){
+    musicOn = on;
+    bgmBtn.textContent = on ? '♪ 音 入' : '♪ 音 切';
+    bgmBtn.classList.toggle('off', !on);
+    try { localStorage.setItem('suminagashi.bgm', on ? '1' : '0'); } catch(e){}
+    if (!AC) { if (on) audioStart(); return; }
+    var t = AC.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(on ? 0.9 : 0, t + 0.4);
+    if (on && AC.state === 'suspended') AC.resume();
+  }
+  bgmBtn.addEventListener('click', function(){ setMusic(!musicOn); });
 
   // ---------- 状態 ----------
   var mode = 'title';           // title / play / over / pause
@@ -400,6 +549,7 @@
     else { mode = 'play'; veil.classList.add('off'); last = 0; }
   }
   function startGame(){
+    audioStart();
     mode = 'play';
     score = 0; lives = 3; graze = 0; gauge = 0; time = 0; level = 1;
     shake = 0; nextBoss = 42; spawnT = 1.2; bossAlive = false;
@@ -815,6 +965,14 @@
       prev.lives = lives;
     }
     var g = Math.round(gauge);
+    if (AC && musicOn && prev.duck !== mode) {
+      var want = (mode === 'play') ? 0.9 : 0.5;
+      var tt = AC.currentTime;
+      master.gain.cancelScheduledValues(tt);
+      master.gain.setValueAtTime(master.gain.value, tt);
+      master.gain.linearRampToValueAtTime(want, tt + 0.6);
+      prev.duck = mode;
+    }
     if (prev.gauge !== g) {
       elBar.style.width = g + '%';
       elGauge.classList.toggle('full', g >= 100);
@@ -843,6 +1001,7 @@
   // ---------- 起動 ----------
   function boot(saved){
     loadHigh();
+    try { if (localStorage.getItem('suminagashi.bgm') === '0') { musicOn = false; bgmBtn.textContent = '♪ 音 切'; bgmBtn.classList.add('off'); } } catch(e){}
     if (saved && saved.high > high) { high = saved.high; saveHigh(); }
     resize();
     syncHUD();
