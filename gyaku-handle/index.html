@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="トレーラーを枠に入れるバック駐車。運転席とミラーからの視点つき。折れ角110度でジャックナイフ。">
+  <style>
+    /* 単体のページとして成立させるための最低限の土台 */
+    :root{
+      color-scheme: light;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    body{ margin:0; font:14px system-ui,-apple-system,"Segoe UI",sans-serif; background:#faf9f7; }
+    img{ max-width:100%; }
+    [hidden]{ display:none !important; }
+  </style>
+<title>逆ハンドル</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@400;700&family=Roboto+Mono:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+  :root{
+    color-scheme: light;
+    --yard:#C9C6BE;
+    --ink:#1F2124;
+    --dim:#7D7C78;
+    --line:rgba(31,33,36,.16);
+    --paint:#EFEDE6;
+    --amber:#C8811F;
+    --ok:#3F7D5C;
+    --ng:#B8412E;
+    --panel:#F4F2EC;
+    --shadow:0 14px 34px rgba(40,40,36,.24);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --yard:#14161A;
+      --ink:#E7E4DA;
+      --dim:#8C8A84;
+      --line:rgba(231,228,218,.16);
+      --panel:#1C1F24;
+      --shadow:0 14px 40px rgba(0,0,0,.62);
+    }
+  }
+  :root[data-theme="dark"]{
+    --yard:#14161A;
+    --ink:#E7E4DA;
+    --dim:#8C8A84;
+    --line:rgba(231,228,218,.16);
+    --panel:#1C1F24;
+    --shadow:0 14px 40px rgba(0,0,0,.62);
+  }
+
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--yard);color:var(--ink);
+    font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',system-ui,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .page{
+    height:100%;box-sizing:border-box;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    padding:10px 14px 12px;
+  }
+  .masthead{display:flex;align-items:baseline;gap:12px;flex:0 0 auto;flex-wrap:wrap;justify-content:center}
+  .masthead h1{
+    margin:0;font-family:'Zen Old Mincho',serif;font-weight:700;
+    font-size:clamp(18px,4.6vw,24px);letter-spacing:.3em;text-indent:.3em;
+  }
+  .masthead p{margin:0;font-size:11px;color:var(--dim);letter-spacing:.06em}
+
+  .stage{flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:center;justify-content:center}
+  .deck{
+    width:min(100%,900px);height:100%;max-height:660px;
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+  }
+
+  .levels{flex:0 0 auto;width:100%;display:flex;gap:4px;align-items:flex-end}
+  .lv{
+    flex:1 1 0;min-width:0;padding:6px 4px 7px;cursor:pointer;
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    color:var(--dim);background:rgba(127,127,127,.10);
+    border:1px solid var(--line);border-bottom:none;border-radius:0;
+    display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.3;
+  }
+  .lv b{font-weight:700;font-size:13px;color:inherit;letter-spacing:.08em}
+  .lv i{font-style:normal;font-size:9px;opacity:.78;letter-spacing:.05em}
+  .lv:hover{background:rgba(127,127,127,.17)}
+  .lv.on{
+    color:var(--amber);background:var(--panel);
+    border-color:var(--line);padding-bottom:9px;
+  }
+  .lv:focus-visible{outline:2px solid var(--amber);outline-offset:-3px}
+
+  .sheet{
+    position:relative;width:100%;
+    background:var(--panel);box-shadow:var(--shadow);
+    border:1px solid var(--line);
+    padding:12px 14px 14px;box-sizing:border-box;
+    flex:1 1 auto;min-height:0;min-width:0;
+    display:flex;flex-direction:column;gap:9px;
+  }
+
+  .bar{
+    display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;min-width:0;
+    border-bottom:1px solid var(--line);padding-bottom:8px;
+  }
+  .bar .cell{display:flex;flex-direction:column;gap:1px}
+  .bar .k{font-size:9px;letter-spacing:.18em;color:var(--dim)}
+  .bar .v{
+    font-family:'Roboto Mono',monospace;font-weight:700;font-size:19px;line-height:1;
+    font-variant-numeric:tabular-nums;color:var(--ink);
+  }
+  .bar .v.sm{font-size:14px}
+  .bar .sp{flex:1}
+  .bar .t .v{font-size:25px;color:var(--amber)}
+  .bar .fold .v.warn{color:var(--ng)}
+
+  .vw{
+    font-family:'Zen Kaku Gothic New',sans-serif;font-size:11px;font-weight:700;
+    letter-spacing:.1em;color:var(--dim);background:transparent;
+    border:1px solid var(--line);border-radius:1px;padding:6px 10px;cursor:pointer;
+  }
+  .vw:hover{color:var(--ink);border-color:var(--amber)}
+  .vw.cab{color:var(--amber);border-color:var(--amber);background:rgba(200,129,31,.08)}
+  .vw:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .vw:disabled{opacity:.42;cursor:default}
+  .vw:disabled:hover{color:var(--amber);border-color:var(--amber)}
+
+  .board{flex:1 1 auto;min-height:0;position:relative}
+  .board canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  .pad{display:flex;gap:6px;flex:0 0 auto}
+  .btn{
+    flex:1 1 0;min-width:0;padding:11px 4px;cursor:pointer;
+    font-family:'Zen Kaku Gothic New',sans-serif;font-size:13px;font-weight:700;
+    letter-spacing:.1em;color:var(--ink);background:transparent;
+    border:1px solid var(--line);border-radius:1px;
+    touch-action:none;user-select:none;-webkit-user-select:none;
+  }
+  .btn small{display:block;font-size:9px;font-weight:400;letter-spacing:.04em;color:var(--dim);margin-top:2px}
+  .btn.hot{background:var(--amber);color:#FFF8EC;border-color:var(--amber)}
+  .btn.hot small{color:rgba(255,248,236,.85)}
+  .btn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+  .veil{
+    position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+    gap:13px;padding:22px;box-sizing:border-box;text-align:center;
+    background:var(--panel);
+  }
+  .veil > :first-child{margin-top:auto}
+  .veil > :last-child{margin-bottom:auto}
+  .veil > *{flex:0 0 auto}
+  .veil.off{display:none}
+  .veil h2{
+    margin:0;font-family:'Zen Old Mincho',serif;font-weight:700;
+    font-size:clamp(21px,5.6vw,29px);letter-spacing:.22em;text-indent:.22em;
+  }
+  .veil p{margin:0;font-size:12.5px;line-height:1.9;color:var(--dim);max-width:30em}
+  .veil p b{color:var(--ink)}
+  .veil .tip{
+    font-size:12px;color:var(--amber);border:1px solid rgba(200,129,31,.4);
+    padding:8px 13px;background:rgba(200,129,31,.07);line-height:1.8;
+  }
+  .veil .grid{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 26px;max-width:100%;
+    font-family:'Roboto Mono',monospace;font-variant-numeric:tabular-nums;
+  }
+  .veil .grid div{display:flex;flex-direction:column;gap:2px}
+  .veil .grid .k{font-family:'Zen Kaku Gothic New',sans-serif;font-size:10px;letter-spacing:.16em;color:var(--dim)}
+  .veil .grid .v{font-size:23px;font-weight:700}
+  .veil .rank{
+    font-family:'Zen Old Mincho',serif;font-weight:700;font-size:44px;line-height:1;
+    color:var(--amber);letter-spacing:.06em;
+  }
+  .veil .note{font-size:11px;letter-spacing:.12em;color:var(--amber)}
+  .go{
+    font-family:'Zen Old Mincho',serif;font-weight:700;font-size:15px;
+    letter-spacing:.22em;text-indent:.22em;
+    padding:11px 28px;cursor:pointer;
+    color:var(--panel);background:var(--ink);border:none;border-radius:1px;
+  }
+  .go:hover{background:var(--amber)}
+  .go:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+
+  .legend{
+    flex:0 0 auto;width:min(100%,900px);
+    display:flex;gap:6px 18px;flex-wrap:wrap;justify-content:center;
+    font-size:10.5px;color:var(--dim);letter-spacing:.04em;
+    border-top:1px solid var(--line);padding-top:8px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="masthead">
+    <h1>逆ハンドル</h1>
+    <p>トレーラーを枠に入れる</p>
+  </div>
+
+  <div class="stage">
+    <div class="deck">
+      <div class="levels" id="levels">
+        <button class="lv on" type="button" data-l="0"><b>一</b><i>ひろい枠</i></button>
+        <button class="lv" type="button" data-l="1"><b>二</b><i>ふつうの枠</i></button>
+        <button class="lv" type="button" data-l="2"><b>三</b><i>隣あり</i></button>
+      </div>
+
+      <div class="sheet" id="sheet">
+        <div class="bar">
+          <div class="cell t"><span class="k">ジカン</span><span class="v" id="vTime">0.0</span></div>
+          <div class="cell fold"><span class="k">オレカク</span><span class="v sm" id="vFold">0°</span></div>
+          <div class="cell"><span class="k">セッショク</span><span class="v sm" id="vHit">0</span></div>
+          <div class="sp"></div>
+          <button class="vw" id="viewBtn" type="button">視点　上から</button>
+          <div class="cell"><span class="k">サイタン</span><span class="v sm" id="vBest">--</span></div>
+        </div>
+
+        <div class="board" id="board"><canvas id="cv"></canvas></div>
+
+        <div class="pad">
+          <button class="btn" id="bL" type="button">◀ 左<small>左キー</small></button>
+          <button class="btn" id="bB" type="button">▼ 後退<small>下キー</small></button>
+          <button class="btn" id="bF" type="button">▲ 前<small>上キー</small></button>
+          <button class="btn" id="bR" type="button">右 ▶<small>右キー</small></button>
+        </div>
+
+        <div class="veil" id="veil">
+          <h2 id="veilTitle">逆ハンドル</h2>
+          <div id="veilBody"></div>
+          <div class="tip" id="veilTip">
+            バックでハンドルを右へ切ると、荷台の尻は<b>左</b>へ出ます。<br>
+            折れ角が<b>110度</b>になると、それ以上は下がれません。前へ出して切り返します。<br>
+            枠に収まったところで<b>止まれば</b>入庫です。
+          </div>
+          <button class="go" id="goBtn" type="button">はじめる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span>左右キー＝ハンドル</span>
+    <span>下キー＝後退</span>
+    <span>上キー＝前進</span>
+    <span>離すと止まる</span>
+    <span>R＝やり直し</span>
+    <span>V＝視点の切り替え</span>
+    <span>スマホは下のボタン</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ================= 寸法（すべてメートル） =================
+  // トラクタ
+  var T_WB   = 3.80;   // ホイールベース（前軸〜後軸）
+  var T_FOH  = 1.30;   // 前軸より前
+  var T_ROH  = 1.10;   // 後軸より後ろ
+  var T_W    = 2.49;   // 車幅
+  // セミトレーラー
+  var S_KP   = 8.20;   // キングピン〜車軸
+  var S_FOH  = 1.10;   // キングピンより前
+  var S_ROH  = 3.60;   // 車軸より後ろ
+  var S_W    = 2.49;
+
+  var MAX_STEER = 0.70;      // ハンドル最大 約40度
+  var STEER_RATE = 0.95;     // ハンドルを切る速さ（ラジアン/秒）
+  var STEER_BACK = 0.30;     // 手を離したときに戻る速さ
+  var V_BACK = -1.25;        // 後退の速さ（m/s、約4.5km/h）
+  var V_FWD  =  1.70;        // 切り返しで前に出る速さ
+  var ACC    =  2.6;         // 速さの立ち上がり
+  var FOLD_MAX = 110 * Math.PI / 180;  // これ以上折れない（ジャックナイフ）
+  var FOLD_WARN = 85 * Math.PI / 180;
+
+  // ================= 課題 =================
+  // bay … 荷台が停まるべき場所。wall＝突き当たりの中心、ang＝停めたときの荷台の向き
+  // 共通の構内：56m×32m。西の門から入り、南側の建物にバースが並ぶ。
+  // bay.ang は「停めたときの荷台の向き」。-90度＝北を向く＝南のバースに尻から入る
+  var YARD = { w:56, h:36 };
+  var DOCK = { x:28, y:33.8, w:54, h:1.8, a:0, bldg:1 };   // 建物
+  var GATE = { y0:2, y1:10 };                      // 西側の門（入ってきたところ）
+
+  var STAGES = [
+    {
+      name:'一', sub:'ひろい枠',
+      yard:YARD,
+      bay:{ wx:30, wy:31.8, ang:-Math.PI/2, w:5.4, depth:15.5 },
+      start:{ x:17, y:6, a:0 },
+      gate:GATE,
+      blocks:[ DOCK ],
+      fast:47.1,   // 総当たり1728通りのうちの最短（実測）
+      note:'門を入ったところからです。枠を右手に見ながら前へ出て、振り返って入れます。枠は広めです。'
+    },
+    {
+      name:'二', sub:'ふつうの枠',
+      yard:YARD,
+      bay:{ wx:30, wy:31.8, ang:-Math.PI/2, w:3.9, depth:15.5 },
+      start:{ x:17, y:6, a:0 },
+      gate:GATE,
+      blocks:[ DOCK ],
+      fast:47.1,
+      note:'枠がトレーラーの幅ぎりぎりになります。上からの絵はもうありません。'
+    },
+    {
+      name:'三', sub:'隣あり',
+      yard:YARD,
+      bay:{ wx:30, wy:31.8, ang:-Math.PI/2, w:3.7, depth:15.5 },
+      start:{ x:17, y:7, a:0 },
+      gate:GATE,
+      blocks:[
+        DOCK,
+        { x:26.4, y:24.75, w:12.9, h:2.5, a:-Math.PI/2, tr:1 },
+        { x:33.6, y:24.75, w:12.9, h:2.5, a:-Math.PI/2, tr:1 }
+      ],
+      fast:46.6,
+      note:'両隣が埋まっています。振り出す場所がありません。'
+    }
+  ];
+
+  var stageIdx = 0;
+  function S(){ return STAGES[stageIdx]; }
+
+  // ================= 部品 =================
+  var cv = document.getElementById('cv');
+  var board = document.getElementById('board');
+  var ctx = cv.getContext('2d');
+  var veil = document.getElementById('veil');
+  var veilTitle = document.getElementById('veilTitle');
+  var veilBody = document.getElementById('veilBody');
+  var veilTip = document.getElementById('veilTip');
+  var goBtn = document.getElementById('goBtn');
+  var levelsEl = document.getElementById('levels');
+  var vTime = document.getElementById('vTime');
+  var vFold = document.getElementById('vFold');
+  var vHit = document.getElementById('vHit');
+  var vBest = document.getElementById('vBest');
+  var bL = document.getElementById('bL');
+  var bF = document.getElementById('bF');
+  var bB = document.getElementById('bB');
+  var viewBtn = document.getElementById('viewBtn');
+  var bR = document.getElementById('bR');
+
+  // ================= 状態 =================
+  var st = 'title';
+  var rig, steer, vel, t, hits, hitCool, tracks, shake, doneHold;
+  var bests = [0,0,0];
+  var key = { l:false, r:false, f:false, b:false };
+  var W = 0, H = 0, scale = 1, ox = 0, oy = 0;
+  var view = 'top';
+
+  function loadBest(){
+    try{
+      for (var i = 0; i < 3; i++){
+        var v = localStorage.getItem('gyaku.best.' + i);
+        if (v) bests[i] = parseFloat(v) || 0;
+      }
+      var s = localStorage.getItem('gyaku.stage');
+      if (s !== null) stageIdx = Math.max(0, Math.min(2, parseInt(s, 10) || 0));
+      var vw = localStorage.getItem('gyaku.view');
+      if (vw === 'cab' || vw === 'top') view = vw;
+    }catch(e){}
+  }
+  function saveBest(){
+    try{
+      localStorage.setItem('gyaku.best.' + stageIdx, String(bests[stageIdx]));
+      localStorage.setItem('gyaku.stage', String(stageIdx));
+    }catch(e){}
+  }
+  function showBest(){
+    vBest.textContent = bests[stageIdx] ? bests[stageIdx].toFixed(1) + '秒' : '--';
+  }
+
+  // ================= 車のかたち =================
+  function reset(){
+    var s = S().start;
+    rig = { x:s.x, y:s.y, a1:s.a, a2:s.a };
+    steer = 0; vel = 0; t = 0; hits = 0; hitCool = 0;
+    tracks = []; shake = 0; doneHold = 0;
+  }
+
+  // トラクタの箱（中心・長さ・幅・向き）
+  function tractorBox(){
+    var L = T_WB + T_FOH + T_ROH;
+    var d = (T_WB + T_FOH - T_ROH) / 2;
+    return { x: rig.x + Math.cos(rig.a1) * d, y: rig.y + Math.sin(rig.a1) * d,
+             w: L, h: T_W, a: rig.a1 };
+  }
+  // 荷台の箱
+  function trailerBox(){
+    var L = S_FOH + S_KP + S_ROH;
+    var d = (S_FOH - S_KP - S_ROH) / 2;
+    return { x: rig.x + Math.cos(rig.a2) * d, y: rig.y + Math.sin(rig.a2) * d,
+             w: L, h: S_W, a: rig.a2 };
+  }
+  // 荷台の車軸
+  function trailerAxle(){
+    return { x: rig.x - Math.cos(rig.a2) * S_KP, y: rig.y - Math.sin(rig.a2) * S_KP };
+  }
+  // 荷台の尻（いちばん後ろの中心）
+  function trailerRear(){
+    var d = S_KP + S_ROH;
+    return { x: rig.x - Math.cos(rig.a2) * d, y: rig.y - Math.sin(rig.a2) * d };
+  }
+
+  // ================= あたり判定（回転した長方形どうし） =================
+  function corners(b){
+    var c = Math.cos(b.a), s = Math.sin(b.a);
+    var hw = b.w / 2, hh = b.h / 2;
+    var out = [];
+    var p = [[hw,hh],[-hw,hh],[-hw,-hh],[hw,-hh]];
+    for (var i = 0; i < 4; i++){
+      out.push({ x: b.x + p[i][0]*c - p[i][1]*s, y: b.y + p[i][0]*s + p[i][1]*c });
+    }
+    return out;
+  }
+  function overlap(A, B){
+    var boxes = [A, B];
+    for (var k = 0; k < 2; k++){
+      var b = boxes[k];
+      var axes = [{x:Math.cos(b.a),y:Math.sin(b.a)}, {x:-Math.sin(b.a),y:Math.cos(b.a)}];
+      for (var i = 0; i < 2; i++){
+        var ax = axes[i];
+        var a1 = project(corners(A), ax), b1 = project(corners(B), ax);
+        if (a1.max < b1.min || b1.max < a1.min) return false;
+      }
+    }
+    return true;
+  }
+  function project(pts, ax){
+    var mn = Infinity, mx = -Infinity;
+    for (var i = 0; i < pts.length; i++){
+      var d = pts[i].x * ax.x + pts[i].y * ax.y;
+      if (d < mn) mn = d;
+      if (d > mx) mx = d;
+    }
+    return { min:mn, max:mx };
+  }
+  function outOfYard(b){
+    var y = S().yard, c = corners(b);
+    for (var i = 0; i < 4; i++){
+      if (c[i].x < 0 || c[i].x > y.w || c[i].y < 0 || c[i].y > y.h) return true;
+    }
+    return false;
+  }
+  function crashed(){
+    var tb = tractorBox(), sb = trailerBox(), bl = S().blocks;
+    if (outOfYard(tb) || outOfYard(sb)) return true;
+    for (var i = 0; i < bl.length; i++){
+      if (overlap(tb, bl[i]) || overlap(sb, bl[i])) return true;
+    }
+    return false;
+  }
+
+  // ================= 入りぐあい =================
+  // 突き当たりからの奥行き・横ずれ・角度のずれを返す
+  function fit(){
+    var b = S().bay;
+    var dx = Math.cos(b.ang), dy = Math.sin(b.ang);     // 枠から出てくる向き
+    var r = trailerRear();
+    var vx = r.x - b.wx, vy = r.y - b.wy;
+    var along = vx * dx + vy * dy;                      // 突き当たりからの距離
+    var lat = -vx * dy + vy * dx;                       // 横ずれ
+    var da = angDiff(rig.a2, b.ang);
+    return { along:along, lat:lat, da:da };
+  }
+  function angDiff(a, b){
+    var d = a - b;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+  function parked(){
+    var f = fit();
+    return f.along > -0.10 && f.along < 1.25
+        && Math.abs(f.lat) < 0.45
+        && Math.abs(f.da) < 6 * Math.PI / 180;
+  }
+
+  // ================= 進める =================
+  function step(dt){
+    // ハンドル
+    var want = (key.l ? -1 : 0) + (key.r ? 1 : 0);
+    if (want !== 0){
+      steer += want * STEER_RATE * dt;
+      if (steer > MAX_STEER) steer = MAX_STEER;
+      if (steer < -MAX_STEER) steer = -MAX_STEER;
+    } else {
+      if (steer > 0) steer = Math.max(0, steer - STEER_BACK * dt);
+      else if (steer < 0) steer = Math.min(0, steer + STEER_BACK * dt);
+    }
+
+    // 速さ（前後とも自分で操作する。何も押さなければ止まる）
+    var target = 0;
+    if (key.f && !key.b) target = V_FWD;
+    else if (key.b && !key.f) target = V_BACK;
+    var fold = angDiff(rig.a1, rig.a2);
+    // 折れきっているあいだは、これ以上下がれない
+    if (target < 0 && Math.abs(fold) >= FOLD_MAX - 1e-4) target = 0;
+    if (vel < target) vel = Math.min(target, vel + ACC * dt);
+    else vel = Math.max(target, vel - ACC * dt);
+
+    // 覚えの位置（ぶつかったら戻す）
+    var prev = { x:rig.x, y:rig.y, a1:rig.a1, a2:rig.a2 };
+
+    var d1 = vel * Math.tan(steer) / T_WB;
+    var d2 = vel * Math.sin(rig.a1 - rig.a2) / S_KP;
+    rig.a1 += d1 * dt;
+    rig.a2 += d2 * dt;
+    rig.x  += vel * Math.cos(prev.a1) * dt;
+    rig.y  += vel * Math.sin(prev.a1) * dt;
+
+    // 折れ角の頭打ち
+    var f2 = angDiff(rig.a1, rig.a2);
+    if (f2 > FOLD_MAX) rig.a2 = rig.a1 - FOLD_MAX;
+    else if (f2 < -FOLD_MAX) rig.a2 = rig.a1 + FOLD_MAX;
+
+    // ぶつかったら、その一歩をなかったことにして止める
+    if (crashed()){
+      rig.x = prev.x; rig.y = prev.y; rig.a1 = prev.a1; rig.a2 = prev.a2;
+      vel = 0;
+      if (hitCool <= 0){ hits++; shake = 0.22; hitCool = 0.7; }
+    }
+    if (hitCool > 0) hitCool -= dt;
+    if (shake > 0) shake -= dt;
+
+    // 轍
+    var ax = trailerAxle();
+    var last = tracks.length ? tracks[tracks.length-1] : null;
+    if (!last || (ax.x-last.x)*(ax.x-last.x) + (ax.y-last.y)*(ax.y-last.y) > 0.09){
+      tracks.push({ x:ax.x, y:ax.y, a:rig.a2 });
+      if (tracks.length > 900) tracks.shift();
+    }
+
+    t += dt;
+
+    // 入ったか（止まっている状態で0.6秒）
+    if (parked() && Math.abs(vel) < 0.25){
+      doneHold += dt;
+      if (doneHold > 0.35) finish();
+    } else {
+      doneHold = 0;
+    }
+  }
+
+  // ================= 絵 =================
+  function layout(){
+    var r = board.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(40, Math.round(r.width));
+    H = Math.max(40, Math.round(r.height));
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var y = S().yard;
+    scale = Math.min(W / y.w, H / y.h);
+    ox = (W - y.w * scale) / 2;
+    oy = (H - y.h * scale) / 2;
+  }
+  function px(x){ return ox + x * scale; }
+  function py(y){ return oy + y * scale; }
+
+  function box(b, fill, stroke, lw){
+    var c = corners(b);
+    ctx.beginPath();
+    ctx.moveTo(px(c[0].x), py(c[0].y));
+    for (var i = 1; i < 4; i++) ctx.lineTo(px(c[i].x), py(c[i].y));
+    ctx.closePath();
+    if (fill){ ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); }
+  }
+
+  function dark(){
+    return getComputedStyle(document.documentElement).getPropertyValue('--yard').trim() === '#14161A';
+  }
+
+  // ================= 運転席からの視点 =================
+  // 世界は x（右）・y（下）・z（上）。運転席は右側（日本仕様）
+  var CAM = {
+    // 運転席（日本仕様なので右側）
+    eye:  { fwd:4.20, side: 0.78, up:2.48, fov:0.85, pitch:-0.16 },  // 負＝見下ろす
+    // ミラーは車体の外側に張り出し、後ろ斜め外を狙う（荷台の側面が内側に映る）
+    mirL: { fwd:4.50, side:-1.62, up:2.26, fov:0.95, aim:{ back:15, out:-3.4 } },
+    mirR: { fwd:4.50, side: 1.62, up:2.26, fov:0.95, aim:{ back:15, out: 3.4 } }
+  };
+
+  // 取り付け位置から、いまの世界の座標とカメラを作る
+  function makeCam(m){
+    var f = { x:Math.cos(rig.a1), y:Math.sin(rig.a1) };
+    var r = { x:-Math.sin(rig.a1), y:Math.cos(rig.a1) };
+    var cx = rig.x + f.x*m.fwd + r.x*m.side;
+    var cy = rig.y + f.y*m.fwd + r.y*m.side;
+    var yaw, pitch;
+    if (m.aim){
+      // 狙う地点（車体のうしろ斜め外、地面の上）
+      var tx = rig.x - f.x*m.aim.back + r.x*m.aim.out;
+      var ty = rig.y - f.y*m.aim.back + r.y*m.aim.out;
+      yaw = Math.atan2(ty - cy, tx - cx);
+      pitch = -Math.atan2(m.up, Math.hypot(tx - cx, ty - cy)) * 0.85;  // 地面を見下ろす
+    } else {
+      yaw = rig.a1; pitch = m.pitch;
+    }
+    return { x:cx, y:cy, z:m.up, yaw:yaw, pitch:pitch, fov:m.fov, flip: !!m.aim };
+  }
+
+  // 世界の一点を、カメラから見た座標へ
+  function toCam(c, P){
+    var dx = P.x - c.x, dy = P.y - c.y, dz = P.z - c.z;
+    var cf = Math.cos(c.yaw), sf = Math.sin(c.yaw);
+    var Z =  dx*cf + dy*sf;
+    var X = -dx*sf + dy*cf;
+    var Y =  dz;
+    if (c.flip) X = -X;
+    var cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
+    var Z2 = Z*cp + Y*sp;
+    var Y2 = Y*cp - Z*sp;
+    return { X:X, Y:Y2, Z:Z2 };
+  }
+
+  var NEAR = 0.22;
+
+  // 日ざしの向き（北西の高いところから）
+  var LIGHT = { x:-0.58, y:-0.70, z:0.42 };
+
+  function hex2rgb(h){
+    var n = parseInt(h.slice(1), 16);
+    return [ (n >> 16) & 255, (n >> 8) & 255, n & 255 ];
+  }
+  // 明るさ f をかけ、遠いほど空の色へ溶かす
+  function tone(hex, f, dist, night){
+    var c = hex2rgb(hex);
+    var r = c[0]*f, g = c[1]*f, b = c[2]*f;
+    var t = Math.min(0.66, Math.max(0, dist) / 72);
+    var hz = night ? [30, 35, 44] : [152, 163, 176];
+    r += (hz[0]-r)*t; g += (hz[1]-g)*t; b += (hz[2]-b)*t;
+    return 'rgb(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ')';
+  }
+  // 面の向きから明るさを出す（横を向いた面は日が当たるほど明るい）
+  function faceLight(nx, ny){
+    var d = nx*LIGHT.x + ny*LIGHT.y;
+    return 0.56 + 0.44 * Math.max(0, d);
+  }
+
+  // 手前で切れる面を、見える分だけに切り詰める
+  function clipNear(pts){
+    var out = [];
+    for (var i = 0; i < pts.length; i++){
+      var a = pts[i], b = pts[(i+1) % pts.length];
+      var ain = a.Z >= NEAR, bin = b.Z >= NEAR;
+      if (ain) out.push(a);
+      if (ain !== bin){
+        var t = (NEAR - a.Z) / (b.Z - a.Z);
+        out.push({ X:a.X + (b.X-a.X)*t, Y:a.Y + (b.Y-a.Y)*t, Z:NEAR });
+      }
+    }
+    return out;
+  }
+
+  // 画面の枠（ミラーは小窓に描く）
+  function poly3(c, vp, pts, fill, stroke, lw){
+    var cam = [];
+    for (var i = 0; i < pts.length; i++) cam.push(toCam(c, pts[i]));
+    cam = clipNear(cam);
+    if (cam.length < 3) return;
+    var focal = (vp.h/2) / Math.tan(c.fov/2);
+    var cx = vp.x + vp.w/2, cy = vp.y + vp.h/2;
+    ctx.beginPath();
+    for (var k = 0; k < cam.length; k++){
+      var q = cam[k];
+      var X = cx + focal * q.X / q.Z;
+      var Y = cy - focal * q.Y / q.Z;
+      if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+    }
+    ctx.closePath();
+    if (fill){ ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); }
+  }
+
+  // 地面に置く平たい四角（線や枠）
+  function ground3(c, vp, b, fill){
+    var q = corners(b);
+    poly3(c, vp, [
+      { x:q[0].x, y:q[0].y, z:0.01 }, { x:q[1].x, y:q[1].y, z:0.01 },
+      { x:q[2].x, y:q[2].y, z:0.01 }, { x:q[3].x, y:q[3].y, z:0.01 }
+    ], fill, null, 0);
+  }
+
+  // 箱（高さつき）。遠い面から順に塗る
+  // 線を一本引く（手前で切れるところは切る）
+  function line3(c, vp, P0, P1, col, lw){
+    var a = toCam(c, P0), b2 = toCam(c, P1);
+    if (a.Z < NEAR && b2.Z < NEAR) return;
+    if (a.Z < NEAR){ var t = (NEAR - a.Z)/(b2.Z - a.Z);
+      a = { X:a.X+(b2.X-a.X)*t, Y:a.Y+(b2.Y-a.Y)*t, Z:NEAR }; }
+    if (b2.Z < NEAR){ var t2 = (NEAR - b2.Z)/(a.Z - b2.Z);
+      b2 = { X:b2.X+(a.X-b2.X)*t2, Y:b2.Y+(a.Y-b2.Y)*t2, Z:NEAR }; }
+    var focal = (vp.h/2) / Math.tan(c.fov/2);
+    var cx = vp.x + vp.w/2, cy = vp.y + vp.h/2;
+    ctx.beginPath();
+    ctx.moveTo(cx + focal*a.X/a.Z,  cy - focal*a.Y/a.Z);
+    ctx.lineTo(cx + focal*b2.X/b2.Z, cy - focal*b2.Y/b2.Z);
+    ctx.strokeStyle = col; ctx.lineWidth = lw || 1; ctx.stroke();
+  }
+
+  // 地面に落ちる影
+  function shadow3(c, vp, b, z1, night){
+    var q = corners(b);
+    var ox2 = -LIGHT.x / LIGHT.z * z1 * 0.55;
+    var oy2 = -LIGHT.y / LIGHT.z * z1 * 0.55;
+    poly3(c, vp, [
+      { x:q[0].x+ox2, y:q[0].y+oy2, z:0.02 }, { x:q[1].x+ox2, y:q[1].y+oy2, z:0.02 },
+      { x:q[2].x+ox2, y:q[2].y+oy2, z:0.02 }, { x:q[3].x+ox2, y:q[3].y+oy2, z:0.02 }
+    ], night ? 'rgba(0,0,0,.40)' : 'rgba(30,32,30,.26)', null, 0);
+  }
+
+  // corners() は 0=前右 1=後右 2=後左 3=前左。面1（後右→後左）が後端
+  // o = { band:後端の帯の色, ribs:側面の筋の数, doors:後端の扉, night:夜か }
+  function box3(c, vp, b, z0, z1, base, o){
+    o = o || {};
+    var night = !!o.night;
+    var q = corners(b);
+    var cxm = b.x, cym = b.y;
+    var faces = [];
+    for (var i = 0; i < 4; i++){
+      var a = q[i], d = q[(i+1)%4];
+      var mx = (a.x+d.x)/2, my = (a.y+d.y)/2;
+      // 外向きの法線（箱の中心から離れるほう）
+      var ex = d.x-a.x, ey = d.y-a.y, L = Math.hypot(ex, ey) || 1;
+      var nx = ey/L, ny = -ex/L;
+      if ((mx-cxm)*nx + (my-cym)*ny < 0){ nx = -nx; ny = -ny; }
+      var dist = Math.hypot(mx-c.x, my-c.y);
+      faces.push({ idx:i, a:a, b:d, nx:nx, ny:ny, pts:[
+        { x:a.x, y:a.y, z:z0 }, { x:d.x, y:d.y, z:z0 },
+        { x:d.x, y:d.y, z:z1 }, { x:a.x, y:a.y, z:z1 }
+      ], col:tone(base, faceLight(nx, ny), dist, night), dist:dist });
+    }
+    var td = Math.hypot(b.x-c.x, b.y-c.y);
+    faces.push({ idx:4, pts:[
+      { x:q[0].x, y:q[0].y, z:z1 }, { x:q[1].x, y:q[1].y, z:z1 },
+      { x:q[2].x, y:q[2].y, z:z1 }, { x:q[3].x, y:q[3].y, z:z1 }
+    ], col:tone(base, 1.06, td, night), dist:-1 });
+    faces.sort(function(m,n){ return n.dist - m.dist; });
+
+    for (var k = 0; k < faces.length; k++){
+      var fc = faces[k];
+      poly3(c, vp, fc.pts, fc.col, 'rgba(0,0,0,.30)', 1);
+      if (fc.idx === 4) continue;
+
+      // 側面の筋（凹凸）。奥行きの手がかりになる
+      if (o.ribs && (fc.idx === 0 || fc.idx === 2)){
+        var rc = night ? 'rgba(0,0,0,.30)' : 'rgba(40,38,32,.22)';
+        for (var rN = 1; rN < o.ribs; rN++){
+          var t2 = rN / o.ribs;
+          var rx = fc.a.x + (fc.b.x - fc.a.x)*t2;
+          var ry = fc.a.y + (fc.b.y - fc.a.y)*t2;
+          line3(c, vp, { x:rx, y:ry, z:z0 + 0.08 }, { x:rx, y:ry, z:z1 - 0.08 }, rc, 1.2);
+        }
+      }
+
+      // 後端：扉の合わせ目と赤い帯
+      if (fc.idx === 1){
+        if (o.doors){
+          var mxd = (fc.a.x + fc.b.x)/2, myd = (fc.a.y + fc.b.y)/2;
+          line3(c, vp, { x:mxd, y:myd, z:z0+0.05 }, { x:mxd, y:myd, z:z1-0.05 },
+            night ? 'rgba(0,0,0,.45)' : 'rgba(40,38,32,.35)', 1.6);
+          // 反射テープ（上下）
+          poly3(c, vp, [
+            { x:fc.a.x, y:fc.a.y, z:z1-0.22 }, { x:fc.b.x, y:fc.b.y, z:z1-0.22 },
+            { x:fc.b.x, y:fc.b.y, z:z1-0.10 }, { x:fc.a.x, y:fc.a.y, z:z1-0.10 }
+          ], night ? '#C7B36A' : '#D8C77E', null, 0);
+        }
+        if (o.band){
+          poly3(c, vp, [
+            { x:fc.a.x, y:fc.a.y, z:z0 + 0.05 }, { x:fc.b.x, y:fc.b.y, z:z0 + 0.05 },
+            { x:fc.b.x, y:fc.b.y, z:z0 + 0.45 }, { x:fc.a.x, y:fc.a.y, z:z0 + 0.45 }
+          ], o.band, null, 0);
+        }
+      }
+    }
+  }
+
+  // 車輪（地面から荷台の下まで）
+  function wheels3(c, vp, cx2, cy2, a, night){
+    for (var sd = -1; sd <= 1; sd += 2){
+      var wx = cx2 - Math.sin(a) * (S_W/2 - 0.16) * sd;
+      var wy = cy2 + Math.cos(a) * (S_W/2 - 0.16) * sd;
+      box3(c, vp, { x:wx, y:wy, w:2.6, h:0.42, a:a }, 0, 1.02,
+        night ? '#15171A' : '#232528', { night:night });
+    }
+  }
+
+  // ひとつの窓（正面またはミラー）の中身を全部描く
+  function scene(c, vp, night){
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(vp.x, vp.y, vp.w, vp.h);
+    ctx.clip();
+
+    // 空と地面（水平線は画面の真ん中から、見下ろしぶんだけ下がる）
+    var focal = (vp.h/2) / Math.tan(c.fov/2);
+    var hz = vp.y + vp.h/2 + focal * Math.tan(c.pitch);
+    var skyTop = vp.y, skyH = Math.max(0, Math.min(vp.h, hz - vp.y));
+    if (skyH > 0){
+      var gs = ctx.createLinearGradient(0, skyTop, 0, skyTop + skyH);
+      gs.addColorStop(0, night ? '#080A0E' : '#7A92A8');
+      gs.addColorStop(1, night ? '#1E232B' : '#98A3AF');
+      ctx.fillStyle = gs;
+      ctx.fillRect(vp.x, skyTop, vp.w, skyH);
+    }
+    var gy0 = Math.max(vp.y, hz), gh = vp.y + vp.h - gy0;
+    if (gh > 0){
+      var gg = ctx.createLinearGradient(0, gy0, 0, gy0 + gh);
+      gg.addColorStop(0, night ? '#1E232B' : '#98A3AF');
+      gg.addColorStop(0.18, night ? '#22262D' : '#9A9B94');
+      gg.addColorStop(1, night ? '#2B3037' : '#8E8C84');
+      ctx.fillStyle = gg;
+      ctx.fillRect(vp.x, gy0, vp.w, gh);
+    }
+
+    var y = S().yard, b = S().bay;
+    var dx = Math.cos(b.ang), dy = Math.sin(b.ang);
+    var nx = -dy, ny = dx;
+
+    // 路面の目地（奥行きが分かるように）
+    var joint = night ? 'rgba(231,228,218,.07)' : 'rgba(31,33,36,.10)';
+    for (var jx = 6; jx < y.w; jx += 6)
+      ground3(c, vp, { x:jx, y:y.h/2, w:y.h, h:0.10, a:Math.PI/2 }, joint);
+    for (var jy = 6; jy < y.h; jy += 6)
+      ground3(c, vp, { x:y.w/2, y:jy, w:y.w, h:0.10, a:0 }, joint);
+
+    // 枠の白線
+    for (var s2 = -1; s2 <= 1; s2 += 2){
+      var mx = b.wx + nx*b.w/2*s2 + dx*b.depth/2;
+      var my = b.wy + ny*b.w/2*s2 + dy*b.depth/2;
+      ground3(c, vp, { x:mx, y:my, w:b.depth, h:0.16, a:b.ang }, night ? '#B9B5A8' : '#EFEDE6');
+    }
+    // 突き当たりの橙線
+    ground3(c, vp, { x:b.wx, y:b.wy, w:0.26, h:b.w, a:b.ang }, '#C8811F');
+    // 中心の破線
+    for (var t2 = 0.6; t2 < b.depth; t2 += 1.6){
+      ground3(c, vp, { x:b.wx + dx*t2, y:b.wy + dy*t2, w:0.8, h:0.10, a:b.ang },
+        night ? 'rgba(200,129,31,.40)' : 'rgba(200,129,31,.55)');
+    }
+    // 轍
+    for (var i = 1; i < tracks.length; i += 2){
+      var tr = tracks[i];
+      for (var sd = -1; sd <= 1; sd += 2){
+        ground3(c, vp, {
+          x: tr.x - Math.sin(tr.a)*(S_W/2-0.25)*sd,
+          y: tr.y + Math.cos(tr.a)*(S_W/2-0.25)*sd,
+          w:0.36, h:0.22, a:tr.a }, night ? 'rgba(0,0,0,.45)' : 'rgba(31,33,36,.22)');
+      }
+    }
+
+    // 遠いものから順に：敷地のふち、建物、隣、荷台
+    var items = [];
+    items.push({ kind:'fence' });
+    var bl = S().blocks;
+    for (var k2 = 0; k2 < bl.length; k2++){
+      var isTrailer = !!bl[k2].tr;
+      items.push({ kind:'block', b:bl[k2], tall: isTrailer ? 4.0 : 6.2, trailer:isTrailer,
+        d:(bl[k2].x-c.x)*(bl[k2].x-c.x) + (bl[k2].y-c.y)*(bl[k2].y-c.y) });
+    }
+    var sb = trailerBox();
+    items.push({ kind:'own', b:sb, d:(sb.x-c.x)*(sb.x-c.x) + (sb.y-c.y)*(sb.y-c.y) });
+    if (c.flip){   // ミラーには自分のトラクタの横腹が映る
+      var tb2 = tractorBox();
+      items.push({ kind:'cab', b:tb2, d:(tb2.x-c.x)*(tb2.x-c.x) + (tb2.y-c.y)*(tb2.y-c.y) });
+    }
+    items.sort(function(m,n){ return (n.d||1e9) - (m.d||1e9); });
+
+    for (var q2 = 0; q2 < items.length; q2++){
+      var it = items[q2];
+      if (it.kind === 'cab'){
+        shadow3(c, vp, it.b, 3.4, night);
+        wheels3(c, vp, rig.x, rig.y, rig.a1, night);
+        wheels3(c, vp, rig.x + Math.cos(rig.a1)*T_WB, rig.y + Math.sin(rig.a1)*T_WB, rig.a1, night);
+        box3(c, vp, it.b, 0.95, 3.45, night ? '#3E6A86' : '#3C6A88', { night:night, ribs:3 });
+      } else if (it.kind === 'fence'){
+        var th = 0.3, g2 = S().gate;
+        var sides = [
+          { x:y.w/2, y:0,     w:y.w, h:th, a:0 },
+          { x:y.w/2, y:y.h,   w:y.w, h:th, a:0 },
+          { x:y.w,   y:y.h/2, w:y.h, h:th, a:Math.PI/2 }
+        ];
+        if (g2){
+          if (g2.y0 > 0.4) sides.push({ x:0, y:g2.y0/2, w:g2.y0, h:th, a:Math.PI/2 });
+          if (g2.y1 < y.h - 0.4) sides.push({ x:0, y:(g2.y1 + y.h)/2, w:y.h - g2.y1, h:th, a:Math.PI/2 });
+        } else {
+          sides.push({ x:0, y:y.h/2, w:y.h, h:th, a:Math.PI/2 });
+        }
+        for (var f2 = 0; f2 < sides.length; f2++)
+          box3(c, vp, sides[f2], 0, 1.1, night ? '#3A3F47' : '#8B8880', { night:night });
+        if (g2){   // 門柱
+          box3(c, vp, { x:0, y:g2.y0, w:0.45, h:0.45, a:0 }, 0, 2.4,
+            night ? '#4A515B' : '#A6A39B', { night:night });
+          box3(c, vp, { x:0, y:g2.y1, w:0.45, h:0.45, a:0 }, 0, 2.4,
+            night ? '#4A515B' : '#A6A39B', { night:night });
+        }
+      } else if (it.kind === 'block'){
+        if (it.trailer){
+          shadow3(c, vp, it.b, it.tall, night);
+          wheels3(c, vp, it.b.x - Math.cos(it.b.a)*3.4, it.b.y - Math.sin(it.b.a)*3.4, it.b.a, night);
+          box3(c, vp, it.b, 1.05, it.tall, night ? '#9E9A8E' : '#C6C2B6',
+            { night:night, ribs:9, doors:true });
+        } else {
+          shadow3(c, vp, it.b, it.tall, night);
+          box3(c, vp, it.b, 0, it.tall, night ? '#42484F' : '#A8A59D', { night:night, ribs:14 });
+          // 建物ならシャッター扉を並べる（狙う枠のぶんだけ開いている）
+          if (it.b.w > 30){
+            var fy = it.b.y - it.b.h/2 - 0.04;
+            for (var dk = -4; dk <= 3; dk++){
+              var dcx = b.wx + dk * 7.2;
+              if (dcx - 1.9 < 2 || dcx + 1.9 > y.w - 2) continue;
+              var dd = Math.hypot(dcx - c.x, fy - c.y);
+              var open = (dk === 0);
+              poly3(c, vp, [
+                { x:dcx-1.9, y:fy, z:0.90 }, { x:dcx+1.9, y:fy, z:0.90 },
+                { x:dcx+1.9, y:fy, z:4.70 }, { x:dcx-1.9, y:fy, z:4.70 }
+              ], open ? tone(night ? '#20252B' : '#3B3E42', 1.0, dd, night)
+                      : tone(night ? '#31363D' : '#807D77', 0.94, dd, night),
+                 'rgba(0,0,0,.40)', 1.2);
+              // まぐさ（扉の上の帯）
+              poly3(c, vp, [
+                { x:dcx-2.1, y:fy, z:4.70 }, { x:dcx+2.1, y:fy, z:4.70 },
+                { x:dcx+2.1, y:fy, z:5.05 }, { x:dcx-2.1, y:fy, z:5.05 }
+              ], open ? '#C8811F' : tone(night ? '#4B525A' : '#B2AFA7', 1.0, dd, night), null, 0);
+              // 開いている扉には奥行きの影を入れる
+              if (open){
+                poly3(c, vp, [
+                  { x:dcx-1.9, y:fy, z:0.90 }, { x:dcx-1.55, y:fy, z:0.90 },
+                  { x:dcx-1.55, y:fy, z:4.70 }, { x:dcx-1.9, y:fy, z:4.70 }
+                ], 'rgba(0,0,0,.45)', null, 0);
+              }
+            }
+          }
+        }
+      } else {
+        shadow3(c, vp, it.b, 4.05, night);
+        var ax4 = trailerAxle();
+        wheels3(c, vp, ax4.x, ax4.y, rig.a2, night);
+        wheels3(c, vp, ax4.x - Math.cos(rig.a2)*1.35, ax4.y - Math.sin(rig.a2)*1.35, rig.a2, night);
+        box3(c, vp, it.b, 1.05, 4.05, night ? '#CFCABB' : '#EDE9DD',
+          { night:night, ribs:11, doors:true, band:'#B8412E' });
+      }
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = night ? 'rgba(231,228,218,.30)' : 'rgba(31,33,36,.40)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(vp.x + 0.75, vp.y + 0.75, vp.w - 1.5, vp.h - 1.5);
+  }
+
+  function drawCab(){
+    var night = dark();
+    var sx = shake > 0 ? (Math.random()-0.5) * 5 : 0;
+    var sy = shake > 0 ? (Math.random()-0.5) * 5 : 0;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.clearRect(-10, -10, W+20, H+20);
+
+    // 前面は画面いっぱい
+    scene(makeCam(CAM.eye), { x:0, y:0, w:W, h:H }, night);
+
+    // ミラーは小さく、左右の隅へ
+    var pad = 7;
+    var mw = Math.max(108, Math.min(W * 0.23, 205));
+    var mh = Math.max(104, Math.min(H * 0.40, 185));
+    var my = H - mh - pad;
+    var mirs = [
+      { cam:CAM.mirL, x:pad,             name:'左ミラー' },
+      { cam:CAM.mirR, x:W - mw - pad,    name:'右ミラー' }
+    ];
+    ctx.font = '10px "Zen Kaku Gothic New", sans-serif';
+    ctx.textAlign = 'center';
+    for (var i3 = 0; i3 < 2; i3++){
+      var vp = { x:mirs[i3].x, y:my, w:mw, h:mh };
+      // ミラーの台座（外枠）
+      ctx.fillStyle = night ? 'rgba(10,11,13,.85)' : 'rgba(31,33,36,.78)';
+      ctx.fillRect(vp.x - 3, vp.y - 15, vp.w + 6, vp.h + 18);
+      scene(makeCam(mirs[i3].cam), vp, night);
+      ctx.fillStyle = 'rgba(231,228,218,.72)';
+      ctx.fillText(mirs[i3].name, vp.x + vp.w/2, vp.y - 4);
+    }
+    ctx.textAlign = 'left';
+
+    // 初級だけ、上からの小窓を右上に出す
+    if (stageIdx === 0){
+      var kw = Math.max(150, Math.min(W * 0.30, 250));
+      var kh = Math.max(92, Math.min(H * 0.34, 150));
+      var kx = W - kw - pad, ky = pad + 12;
+      ctx.fillStyle = night ? 'rgba(10,11,13,.85)' : 'rgba(31,33,36,.78)';
+      ctx.fillRect(kx - 3, ky - 15, kw + 6, kh + 18);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(kx, ky, kw, kh); ctx.clip();
+      drawTop({ x:kx, y:ky, w:kw, h:kh }, true);
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(231,228,218,.30)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(kx + 0.5, ky + 0.5, kw - 1, kh - 1);
+      ctx.fillStyle = 'rgba(231,228,218,.72)';
+      ctx.textAlign = 'center';
+      ctx.fillText('上から（初級のみ）', kx + kw/2, ky - 4);
+      ctx.textAlign = 'left';
+      layout();   // 縮尺をもとに戻す
+    }
+
+    ctx.restore();
+    drawWheelGauge(W/2, H - 34);
+  }
+
+  function draw(){
+    if (!rig || !tracks) return;          // 車がまだ置かれていないうちは描かない
+    if (view === 'cab') drawCab(); else drawTop();
+  }
+
+  function drawTop(vp, mini){
+    vp = vp || { x:0, y:0, w:W, h:H };
+    var y = S().yard, b = S().bay;
+    // この窓に合わせて縮尺を決め直す
+    scale = Math.min(vp.w / y.w, vp.h / y.h);
+    ox = vp.x + (vp.w - y.w*scale) / 2;
+    oy = vp.y + (vp.h - y.h*scale) / 2;
+
+    var night = dark();
+    var sx = (shake > 0 && !mini) ? (Math.random()-0.5) * 5 : 0;
+    var sy = (shake > 0 && !mini) ? (Math.random()-0.5) * 5 : 0;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    if (!mini) ctx.clearRect(-10, -10, W+20, H+20);
+
+    // 敷地
+    ctx.fillStyle = night ? '#23272E' : '#9E9C94';
+    ctx.fillRect(px(0), py(0), y.w*scale, y.h*scale);
+    ctx.strokeStyle = night ? 'rgba(231,228,218,.30)' : 'rgba(31,33,36,.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px(0), py(0), y.w*scale, y.h*scale);
+
+    // 轍
+    if (tracks.length > 1){
+      ctx.strokeStyle = night ? 'rgba(0,0,0,.42)' : 'rgba(31,33,36,.20)';
+      ctx.lineWidth = Math.max(1, 0.22 * scale);
+      ctx.lineCap = 'round';
+      for (var side = -1; side <= 1; side += 2){
+        ctx.beginPath();
+        for (var i = 0; i < tracks.length; i++){
+          var tr = tracks[i];
+          var nx = -Math.sin(tr.a) * (S_W/2 - 0.25) * side;
+          var ny =  Math.cos(tr.a) * (S_W/2 - 0.25) * side;
+          var X = px(tr.x + nx), Y = py(tr.y + ny);
+          if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+        }
+        ctx.stroke();
+      }
+    }
+
+    // 枠（バース）
+    var dx = Math.cos(b.ang), dy = Math.sin(b.ang);
+    var nx2 = -dy, ny2 = dx;
+    ctx.strokeStyle = night ? 'rgba(239,237,230,.72)' : 'rgba(239,237,230,.92)';
+    ctx.lineWidth = Math.max(2, 0.16 * scale);
+    for (var s2 = -1; s2 <= 1; s2 += 2){
+      var ax1 = b.wx + nx2 * b.w/2 * s2, ay1 = b.wy + ny2 * b.w/2 * s2;
+      var ax2 = ax1 + dx * b.depth, ay2 = ay1 + dy * b.depth;
+      ctx.beginPath(); ctx.moveTo(px(ax1), py(ay1)); ctx.lineTo(px(ax2), py(ay2)); ctx.stroke();
+    }
+    // 突き当たり
+    ctx.beginPath();
+    ctx.moveTo(px(b.wx + nx2*b.w/2), py(b.wy + ny2*b.w/2));
+    ctx.lineTo(px(b.wx - nx2*b.w/2), py(b.wy - ny2*b.w/2));
+    ctx.strokeStyle = '#C8811F'; ctx.lineWidth = Math.max(3, 0.25*scale);
+    ctx.stroke();
+    // 中心線
+    ctx.beginPath();
+    ctx.moveTo(px(b.wx), py(b.wy));
+    ctx.lineTo(px(b.wx + dx*b.depth), py(b.wy + dy*b.depth));
+    ctx.strokeStyle = night ? 'rgba(200,129,31,.34)' : 'rgba(200,129,31,.46)';
+    ctx.lineWidth = Math.max(1, 0.07*scale);
+    ctx.setLineDash([0.7*scale, 0.7*scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 障害物
+    var bl = S().blocks;
+    for (var i2 = 0; i2 < bl.length; i2++){
+      box(bl[i2], night ? '#32363E' : '#7C7A72', night ? 'rgba(231,228,218,.26)' : 'rgba(31,33,36,.38)', 1.5);
+    }
+
+    // 尻の向きの目安線
+    var r0 = trailerRear();
+    ctx.beginPath();
+    ctx.moveTo(px(r0.x), py(r0.y));
+    ctx.lineTo(px(r0.x - Math.cos(rig.a2)*7), py(r0.y - Math.sin(rig.a2)*7));
+    ctx.strokeStyle = night ? 'rgba(200,129,31,.40)' : 'rgba(200,129,31,.52)';
+    ctx.lineWidth = Math.max(1, 0.06*scale);
+    ctx.setLineDash([0.45*scale, 0.55*scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 荷台
+    var sb = trailerBox();
+    box(sb, night ? '#D9D4C6' : '#E8E4D8', night ? 'rgba(0,0,0,.5)' : 'rgba(31,33,36,.5)', 1.5);
+    // 荷台の後端を濃く
+    var rr = trailerRear();
+    ctx.beginPath();
+    ctx.moveTo(px(rr.x + (-Math.sin(rig.a2))*S_W/2), py(rr.y + (Math.cos(rig.a2))*S_W/2));
+    ctx.lineTo(px(rr.x - (-Math.sin(rig.a2))*S_W/2), py(rr.y - (Math.cos(rig.a2))*S_W/2));
+    ctx.strokeStyle = '#B8412E'; ctx.lineWidth = Math.max(2, 0.18*scale); ctx.stroke();
+    // 荷台の車輪
+    var ax3 = trailerAxle();
+    wheel(ax3.x, ax3.y, rig.a2, 0);
+    wheel(ax3.x - Math.cos(rig.a2)*1.3, ax3.y - Math.sin(rig.a2)*1.3, rig.a2, 0);
+
+    // トラクタ
+    var tb = tractorBox();
+    box(tb, night ? '#3E6A86' : '#3C6A88', night ? 'rgba(0,0,0,.5)' : 'rgba(31,33,36,.5)', 1.5);
+    // 運転席
+    var cabD = T_WB + T_FOH - 1.0;
+    box({ x: rig.x + Math.cos(rig.a1)*cabD, y: rig.y + Math.sin(rig.a1)*cabD,
+          w:2.0, h:T_W-0.2, a:rig.a1 }, night ? '#5E8CA8' : '#5A8AA8', null, 0);
+    // 車輪（前は切れた向き）
+    wheel(rig.x + Math.cos(rig.a1)*T_WB, rig.y + Math.sin(rig.a1)*T_WB, rig.a1, steer);
+    wheel(rig.x, rig.y, rig.a1, 0);
+    // 連結部
+    ctx.beginPath();
+    ctx.arc(px(rig.x), py(rig.y), Math.max(2, 0.30*scale), 0, Math.PI*2);
+    ctx.fillStyle = night ? '#E7E4DA' : '#1F2124';
+    ctx.fill();
+
+    // 門（入ってきたところ）
+    var g = S().gate;
+    if (g){
+      ctx.strokeStyle = night ? '#23272E' : '#9E9C94';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(px(0), py(g.y0)); ctx.lineTo(px(0), py(g.y1));
+      ctx.stroke();
+      ctx.fillStyle = night ? 'rgba(231,228,218,.55)' : 'rgba(31,33,36,.55)';
+      ctx.fillRect(px(0) - 2, py(g.y0) - 3, 4, 6);
+      ctx.fillRect(px(0) - 2, py(g.y1) - 3, 4, 6);
+    }
+
+    ctx.restore();
+
+    if (!mini) drawWheelGauge();
+  }
+
+  function wheel(x, y, a, extra){
+    var b = { x:x, y:y, w:1.05, h:0.34, a:a + extra };
+    for (var s = -1; s <= 1; s += 2){
+      var nx = -Math.sin(a) * (T_W/2 - 0.22) * s;
+      var ny =  Math.cos(a) * (T_W/2 - 0.22) * s;
+      box({ x:b.x + nx, y:b.y + ny, w:b.w, h:b.h, a:b.a }, '#17181B', null, 0);
+    }
+  }
+
+  // ハンドルの切れぐあい
+  function drawWheelGauge(gx, gy){
+    var night = dark();
+    var cx = (gx === undefined) ? 34 : gx;
+    var cy = (gy === undefined) ? H - 34 : gy;
+    var r = 21;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.strokeStyle = night ? 'rgba(231,228,218,.30)' : 'rgba(31,33,36,.26)';
+    ctx.lineWidth = 3; ctx.stroke();
+    var a = -Math.PI/2 + (steer / MAX_STEER) * (Math.PI * 0.75);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a)*r, cy + Math.sin(a)*r);
+    ctx.strokeStyle = '#C8811F'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2);
+    ctx.fillStyle = '#C8811F'; ctx.fill();
+  }
+
+  // ================= 表示 =================
+  function hud(){
+    vTime.textContent = t.toFixed(1);
+    var f = Math.abs(angDiff(rig.a1, rig.a2)) * 180 / Math.PI;
+    vFold.textContent = Math.round(f) + '°';
+    vFold.classList.toggle('warn', f >= FOLD_WARN * 180 / Math.PI);
+    vHit.textContent = hits;
+  }
+
+  function showTitle(){
+    st = 'title'; reset(); layout(); draw(); hud(); showBest();
+    veilTitle.textContent = '逆ハンドル';
+    veilBody.innerHTML =
+      '<p><b>' + S().name + '（' + S().sub + '）</b>　' + S().note + '<br>'
+      + '荷台の尻を奥の橙色の線まで入れて、<b>止まれば</b>終わりです。<br>'
+      + '<span style="opacity:.8">機械に総当たりさせたときの最短は <b>' + S().fast.toFixed(1) + '秒</b>。</span></p>';
+    veilTip.style.display = '';
+    goBtn.textContent = 'はじめる';
+    veil.classList.remove('off');
+    veil.classList.remove('result');
+  }
+
+  function startGame(){
+    reset(); layout();
+    st = 'play';
+    veil.classList.add('off');
+  }
+
+  // 機械に総当たりで出させた最短（fast）の何倍かで決める
+  function rankOf(sec, hit){
+    var v = (sec + hit * 8) / S().fast;
+    if (v < 1.30) return 'S';
+    if (v < 1.90) return 'A';
+    if (v < 3.00) return 'B';
+    if (v < 4.50) return 'C';
+    return 'D';
+  }
+
+  function finish(){
+    st = 'over';
+    var isNew = !bests[stageIdx] || t < bests[stageIdx];
+    if (isNew){ bests[stageIdx] = t; saveBest(); }
+    showBest();
+    var f = fit();
+    veilTitle.textContent = '入庫';
+    veilBody.innerHTML =
+      '<div class="rank">' + rankOf(t, hits) + '</div>'
+      + '<div class="grid">'
+      +   '<div><span class="k">ジカン</span><span class="v">' + t.toFixed(1) + '</span></div>'
+      +   '<div><span class="k">セッショク</span><span class="v">' + hits + '</span></div>'
+      +   '<div><span class="k">ヨコズレ</span><span class="v">' + Math.round(Math.abs(f.lat)*100) + 'cm</span></div>'
+      +   '<div><span class="k">カタムキ</span><span class="v">' + (Math.abs(f.da)*180/Math.PI).toFixed(1) + '°</span></div>'
+      + '</div>'
+      + '<p class="note">' + S().name + '（' + S().sub + '）　'
+      + (isNew ? 'サイタン コウシン' : 'サイタン ' + bests[stageIdx].toFixed(1) + '秒')
+      + '　キカイ ' + S().fast.toFixed(1) + '秒</p>';
+    veilTip.style.display = 'none';
+    goBtn.textContent = 'もう一度';
+    veil.classList.add('result');
+    veil.classList.remove('off');
+  }
+
+  // ================= 操作 =================
+  function setKey(k, on){ key[k] = on; paint(); }
+  function paint(){
+    bL.classList.toggle('hot', key.l);
+    bR.classList.toggle('hot', key.r);
+    bF.classList.toggle('hot', key.f);
+    bB.classList.toggle('hot', key.b);
+  }
+
+  window.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A'){ setKey('l', true); e.preventDefault(); }
+    else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D'){ setKey('r', true); e.preventDefault(); }
+    else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W'){ setKey('f', true); e.preventDefault(); }
+    else if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 's' || e.key === 'S'){ setKey('b', true); e.preventDefault(); }
+    else if (e.key === 'r' || e.key === 'R'){ if (st === 'play'){ reset(); paint(); } }
+    else if (e.key === 'v' || e.key === 'V'){ setView(view === 'cab' ? 'top' : 'cab'); }
+    else if (e.key === 'Enter' && st !== 'play'){ startGame(); e.preventDefault(); }
+  });
+  window.addEventListener('keyup', function(e){
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') setKey('l', false);
+    else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') setKey('r', false);
+    else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') setKey('f', false);
+    else if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 's' || e.key === 'S') setKey('b', false);
+  });
+  window.addEventListener('blur', function(){ key.l = key.r = key.f = key.b = false; paint(); });
+
+  function hold(el, k){
+    el.addEventListener('pointerdown', function(e){
+      e.preventDefault();
+      if (el.setPointerCapture) { try{ el.setPointerCapture(e.pointerId); }catch(err){} }
+      setKey(k, true);
+    });
+    el.addEventListener('pointerup', function(){ setKey(k, false); });
+    el.addEventListener('pointercancel', function(){ setKey(k, false); });
+    el.addEventListener('pointerleave', function(){ setKey(k, false); });
+    el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+  }
+  hold(bL, 'l'); hold(bR, 'r'); hold(bF, 'f'); hold(bB, 'b');
+
+  function setView(v){
+    if (stageIdx > 0) v = 'cab';        // 中級からは運転席だけ
+    view = v;
+    viewBtn.textContent = (v === 'cab') ? '視点　運転席' : '視点　上から';
+    viewBtn.classList.toggle('cab', v === 'cab');
+    try{ localStorage.setItem('gyaku.view', v); }catch(e){}
+    layout(); draw();
+  }
+  viewBtn.addEventListener('click', function(){ setView(view === 'cab' ? 'top' : 'cab'); });
+
+  goBtn.addEventListener('click', function(){ startGame(); });
+
+  function setStage(i){
+    stageIdx = Math.max(0, Math.min(STAGES.length - 1, i));
+    var btns = levelsEl.getElementsByTagName('button');
+    for (var k = 0; k < btns.length; k++) btns[k].classList.toggle('on', k === stageIdx);
+    saveBest();
+    if (stageIdx > 0){
+      viewBtn.disabled = true;
+      viewBtn.title = '中級からは運転席だけです';
+      setView('cab');
+    } else {
+      viewBtn.disabled = false;
+      viewBtn.title = '';
+    }
+    showTitle();
+  }
+  levelsEl.addEventListener('click', function(e){
+    var b = e.target;
+    while (b && b !== levelsEl && !b.getAttribute('data-l')) b = b.parentNode;
+    if (b && b !== levelsEl) setStage(parseInt(b.getAttribute('data-l'), 10));
+  });
+
+  window.addEventListener('resize', function(){ layout(); draw(); });
+
+  // ================= 時計 =================
+  var lastT = 0;
+  var acc = 0;
+  function frame(now){
+    if (!lastT) lastT = now;
+    var dt = Math.min(0.1, (now - lastT) / 1000);
+    lastT = now;
+    if (st === 'play'){
+      acc += dt;
+      while (acc >= 1/60){ step(1/60); acc -= 1/60; if (st !== 'play') break; }
+      hud();
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  function boot(){
+    loadBest();
+    if (stageIdx > 0){ view = 'cab'; viewBtn.disabled = true; }
+    setView(view);
+    var btns = levelsEl.getElementsByTagName('button');
+    for (var k = 0; k < btns.length; k++) btns[k].classList.toggle('on', k === stageIdx);
+    showTitle();
+    requestAnimationFrame(frame);
+  }
+  boot();
+})();
+</script>
+
+</body>
+</html>
