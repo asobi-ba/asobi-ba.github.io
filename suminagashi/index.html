@@ -254,7 +254,7 @@
 
       <div class="vol" id="volWrap">
         <button class="volbtn" id="bgmBtn" type="button" aria-label="音を消す">♪</button>
-        <input class="volsld" id="volSlider" type="range" min="0" max="100" value="70" aria-label="音量">
+        <input class="volsld" id="volSlider" type="range" min="0" max="100" value="80" aria-label="音量">
       </div>
 
       <button class="bomb" id="bombBtn" type="button" title="墨流し（Space）">墨</button>
@@ -343,33 +343,42 @@
   var bgmBtn  = document.getElementById('bgmBtn');
   var volSld  = document.getElementById('volSlider');
 
-  var AC = null, master = null, dryG = null, wetG = null, noiseBuf = null;
-  var musicOn = true, volume = 0.7;
+  var AC = null, master = null, dryG = null, wetG = null, seG = null, noiseBuf = null;
+  var musicOn = true, volume = 0.8;
   var tones = {}, drums = {}, schedId = 0, nextT = 0, stepN = 0;
 
-  var BPM = 152, STEP = 60 / BPM / 4;        // 16分音符の長さ（秒）
-  var A2 = 110, A4 = 440;                    // 基準の高さ
+  var BASS_HZ = 130.81, LEAD_HZ = 523.25;    // ド（C3）とド（C5）
 
-  // 和音進行：Am → F → C → G（1小節ずつ）。数字はイ音からの半音
-  var CHORD_ROOT = [0, -4, 3, -2];
-  var CHORD_TONE = [[0,3,7], [-4,0,3], [3,7,10], [-2,2,5]];
-
-  // 旋律（16分音符ごと。数字はイ音からの半音、null は休み）。8小節でひとまわり
-  var MELODY = [
-    12,null, 10,null,  7,null, 10,null, 12,null,null,  7,null,null,  5,null,
-     8,null,  7,null,  3,null,  7,null,  8,null,null, 12,null,null, 10,null,
-     7,null,  3,null,  0,null,  3,null,  7,null, 10,null, 12,null, 15,null,
-    14,null, 12,null, 10,null,  7,null, 10,null,null,null, 12,null,null,null,
-    19,null, 17,null, 15,null, 12,null, 15,null,null, 12,null,null, 10,null,
-    12,null, 15,null, 17,null, 15,null, 12,null,null,null,  8,null,null,null,
-    15,null, 12,null, 10,null, 12,null, 15,null, 17,null, 19,null,null,null,
-    17,null, 14,null, 12,null, 10,null, 12,null, 10,null,  7,null,null,null
+  // 曲は1本。ロック寄りの「冒険」
+  var TRACKS = [
+    {
+      name: '冒険', bpm: 168,
+      // Am → F → C → G。明るいけれど少し切ない並び
+      root: [-3, -7, 0, -5],
+      tri:  [[-3,0,4], [-7,-3,0], [0,4,7], [-5,-1,2]],
+      lead: { dur:0.38, wave:'saw', atk:0.003, dec:0.13, cut:4400, det:0.012, amp:0.44, vol:0.95, echo:2, drive:3.4 },
+      // 歪ませたパワーコードを8分で刻む（ロックらしさの芯）
+      power: [1,0,0,1, 0,0,1,0, 1,0,0,1, 0,0,1,0], powerVol: 0.46,
+      bass: [0,null, 0,null, 12,null, 0,null, 0,null, 0,null, 7,null, 12,null],
+      kick:  [1,0,0,1, 0,0,1,0, 1,0,0,1, 0,0,0,0],
+      snare: [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
+      hatEvery: 2, padAt: [], arpEvery: 4, arpVol: 0.16,
+      mel: [
+        // 3-3-2 の食い気味の型。休みを作って拍を立てる
+         9,null,null,  9, null,null, 12,null,  9,null,null, 16, null,null, 14,null,
+        12,null,null, 12, null,null,  9,null, 12,null,null, 17, null,null, 16,null,
+        16,null,null, 16, null,null, 12,null, 16,null,null, 19, null,null, 21,null,
+        19,null,null, 19, null,null, 14,null, 19,null,null, 16, null, 14,null,null,
+        21,null, 21, 19, null,null, 16,null, 21,null, 19, 16, null,null, 14,null,
+        17,null, 17, 16, null,null, 12,null, 17,null, 16, 12, null,null,  9,null,
+        19,null, 19, 16, null,null, 12,null, 19,null, 21, 19, null,null, 16,null,
+        14,null,null, 16, null,null, 19,null, 16,null,null, 11, null,null,null,null
+      ]
+    }
   ];
-  // 低音（1小節ぶん。和音の根音からの半音）
-  var BASS = [0,null, 0,null, 0,null, 12,null, 0,null, 0,null, 7,null, 12,null];
-  // ドラム（1小節ぶん）
-  var KICK  = [1,0,0,0,0,0,1,0, 1,0,0,0,0,0,1,0];
-  var SNARE = [0,0,0,0,1,0,0,0, 0,0,0,0,1,0,0,0];
+  var trackIdx = 0;
+  function T(){ return TRACKS[trackIdx]; }
+  var STEP = 60 / TRACKS[0].bpm / 4;
 
   function hz(semi, base){ return (base || A4) * Math.pow(2, semi / 12); }
 
@@ -377,11 +386,12 @@
   function oscAt(type, ph){
     var f = ph - Math.floor(ph);
     if (type === 'saw')    return 2 * f - 1;
+    if (type === 'tri')    return 4 * Math.abs(f - 0.5) - 1;
     if (type === 'square') return f < 0.5 ? 1 : -1;
     if (type === 'pulse')  return f < 0.28 ? 1 : -1;
     return Math.sin(2 * Math.PI * f);
   }
-  function makeToneData(sr, freq, dur, type, atk, dec, cut, detune, amp){
+  function makeToneData(sr, freq, dur, type, atk, dec, cut, detune, amp, drive){
     var n = Math.max(1, Math.floor(sr * dur));
     var out = new Float32Array(n);
     var ph = 0, ph2 = 0;
@@ -392,7 +402,9 @@
       var e = (t < atk) ? (t / atk) : Math.exp(-(t - atk) / dec);
       var v = oscAt(type, ph) + (detune ? oscAt(type, ph2) * 0.55 : 0);
       lp += (v - lp) * a;
-      out[i] = lp * e * (amp || 0.3);
+      var w = lp;
+      if (drive && drive > 1) w = Math.tanh(w * drive) / Math.tanh(drive);   // 歪み
+      out[i] = w * e * (amp || 0.3);
       ph += inc; ph2 += inc2;
     }
     // 終わりを滑らかに切る
@@ -400,31 +412,126 @@
     for (var j = 0; j < f2; j++) out[n - 1 - j] *= j / f2;
     return out;
   }
-  function makeKickData(sr){
-    var n = Math.floor(sr * 0.26), out = new Float32Array(n), ph = 0;
+  // ギターの音。要点は「重ねてから歪ませ、そのあとフィルタ」という順番。
+  // 逆にすると細くブーッと鳴るだけで、あの厚みが出ない。
+  function makeGuitarData(sr, freq, dur, drive, cut, amp, isChord){
+    var n = Math.max(1, Math.floor(sr * dur));
+    var out = new Float32Array(n);
+    // パワーコードは 根音＋5度＋オクターブ。旋律は 根音＋わずかにずらした音＋オクターブ
+    var ratios = isChord ? [1, 1.4983, 2] : [1, 1.006, 2];
+    var lv     = isChord ? [1, 0.95, 0.55] : [1, 0.8, 0.35];
+    var ph = [0, 0, 0], inc = [], k;
+    for (k = 0; k < 3; k++) inc.push(freq * ratios[k] / sr);
+    var a = Math.min(1, 2 * Math.PI * cut / sr);
+    var f1 = 0, f2 = 0;                         // 2段のローパス（1段だと角が残る）
+    var hold = Math.max(0.05, dur - 0.07);
+    for (var i = 0; i < n; i++){
+      var t = i / sr, v = 0;
+      for (k = 0; k < 3; k++){
+        var fr = ph[k] - Math.floor(ph[k]);
+        v += (2 * fr - 1) * lv[k];
+        ph[k] += inc[k];
+      }
+      v = Math.tanh(v * drive);                 // ここで歪ませる（フィルタより先）
+      f1 += (v - f1) * a;
+      f2 += (f1 - f2) * a;
+      var e;
+      if (t < 0.004) e = t / 0.004;             // 立ち上がりは速く
+      else e = 0.58 + 0.42 * Math.exp(-(t - 0.004) / (dur * 0.35));   // あとは伸ばす
+      if (t > hold) e *= Math.max(0, (dur - t) / (dur - hold));       // 最後だけ落とす
+      out[i] = f2 * e * amp;
+    }
+    return out;
+  }
+
+  // ベース。低い芯（正弦波）＋輪郭（鋸波）をまとめて歪ませ、
+  // 弦を弾いた瞬間の音はフィルタの後ろで足す（そこだけ明るく残したいため）
+  function makeBassData(sr, freq, dur, drive, cut, amp){
+    var n = Math.max(1, Math.floor(dur * sr));
+    var out = new Float32Array(n);
+    var ph1 = 0, ph2 = 0, f1 = 0, f2 = 0, last = 0, hp = 0;
+    var inc1 = freq / sr, inc2 = freq / sr;
+    var a = Math.min(1, 2 * Math.PI * cut / sr);
+    var hold = Math.max(0.05, dur - 0.05);
     for (var i = 0; i < n; i++){
       var t = i / sr;
-      var f = 150 * Math.pow(0.30, t / 0.09) + 42;
+      var sub = Math.sin(2 * Math.PI * ph1);                 // 低い芯
+      var fr  = ph2 - Math.floor(ph2);
+      var saw = 2 * fr - 1;                                   // 輪郭
+      ph1 += inc1; ph2 += inc2;
+      var v = Math.tanh((sub * 1.1 + saw * 0.9) * drive);     // まとめて歪ませる
+      f1 += (v - f1) * a;
+      f2 += (f1 - f2) * a;
+      // 弾いた瞬間の音
+      var nz = Math.random() * 2 - 1;
+      hp = nz - last; last = nz;
+      var pick = hp * Math.exp(-t / 0.004) * 0.35;
+      var e;
+      if (t < 0.003) e = t / 0.003;
+      else e = 0.62 + 0.38 * Math.exp(-(t - 0.003) / (dur * 0.30));
+      if (t > hold) e *= Math.max(0, (dur - t) / (dur - hold));
+      out[i] = (f2 * e + pick) * amp;
+    }
+    return out;
+  }
+
+  function makeKickData(sr){
+    // 胴の低い音だけでは軽い。頭にビーターの当たる音（短い高い成分）を足す
+    var n = Math.floor(sr * 0.32), out = new Float32Array(n);
+    var ph = 0, last = 0, hp = 0;
+    for (var i = 0; i < n; i++){
+      var t = i / sr;
+      var nz = Math.random() * 2 - 1;
+      hp = nz - last; last = nz;
+      var click = hp * Math.exp(-t / 0.0016) * 0.7;
+      var f = 48 + 150 * Math.exp(-t / 0.028);      // 高いところから一気に下がる
       ph += f / sr;
-      out[i] = Math.sin(2 * Math.PI * ph) * Math.exp(-t / 0.075) * 0.85;
+      var body = Math.sin(2 * Math.PI * ph) * Math.exp(-t / 0.115);
+      out[i] = Math.tanh((body * 1.15 + click) * 1.5) * 0.62;
     }
     return out;
   }
   function makeSnareData(sr){
-    var n = Math.floor(sr * 0.17), out = new Float32Array(n), bp = 0;
+    // 胴の音＋スナッピーのざらつき。前は0.055秒で消えていたので伸ばす
+    var n = Math.floor(sr * 0.26), out = new Float32Array(n);
+    var ph = 0, hp = 0, last = 0;
     for (var i = 0; i < n; i++){
       var t = i / sr;
-      bp += ((Math.random() * 2 - 1) - bp) * 0.38;
-      out[i] = (bp * 1.5 + Math.sin(2 * Math.PI * 190 * t) * 0.45) * Math.exp(-t / 0.055) * 0.5;
+      var nz = Math.random() * 2 - 1;
+      hp = 0.72 * (hp + nz - last); last = nz;      // 高い成分を残す
+      var rattle = hp * Math.exp(-t / 0.085);
+      var f = 175 + 90 * Math.exp(-t / 0.02);
+      ph += f / sr;
+      var body = Math.sin(2 * Math.PI * ph) * Math.exp(-t / 0.055) * 0.55;
+      out[i] = Math.tanh((rattle * 1.2 + body) * 1.4) * 0.5;
     }
     return out;
   }
   function makeHatData(sr){
-    var n = Math.floor(sr * 0.05), out = new Float32Array(n), last = 0;
+    var n = Math.floor(sr * 0.05), out = new Float32Array(n), hp = 0, last = 0;
     for (var i = 0; i < n; i++){
       var t = i / sr, nz = Math.random() * 2 - 1;
-      out[i] = (nz - last) * Math.exp(-t / 0.014) * 0.22;
-      last = nz;
+      hp = 0.85 * (hp + nz - last); last = nz;
+      out[i] = hp * Math.exp(-t / 0.012) * 0.26;
+    }
+    return out;
+  }
+  function makeOpenHatData(sr){
+    var n = Math.floor(sr * 0.24), out = new Float32Array(n), hp = 0, last = 0;
+    for (var i = 0; i < n; i++){
+      var t = i / sr, nz = Math.random() * 2 - 1;
+      hp = 0.85 * (hp + nz - last); last = nz;
+      out[i] = hp * Math.exp(-t / 0.085) * 0.30;
+    }
+    return out;
+  }
+  function makeCrashData(sr){
+    var n = Math.floor(sr * 1.1), out = new Float32Array(n), hp = 0, last = 0;
+    for (var i = 0; i < n; i++){
+      var t = i / sr, nz = Math.random() * 2 - 1;
+      hp = 0.88 * (hp + nz - last); last = nz;
+      var e = (t < 0.004) ? t / 0.004 : Math.exp(-t / 0.38);
+      out[i] = hp * e * 0.34;
     }
     return out;
   }
@@ -436,19 +543,23 @@
     return b;
   }
   function toneBuf(kind, freq){
-    var key = kind + '_' + Math.round(freq);
+    var key = trackIdx + '_' + kind + '_' + Math.round(freq);
     if (tones[key]) return tones[key];
     var d;
-    if (kind === 'lead') d = makeToneData(AC.sampleRate, freq, 0.34, 'pulse', 0.004, 0.10, 3200, 0.012, 0.30);
-    else if (kind === 'bass') d = makeToneData(AC.sampleRate, freq, 0.24, 'saw', 0.003, 0.09, 700, 0, 0.42);
-    else d = makeToneData(AC.sampleRate, freq, 0.13, 'square', 0.002, 0.045, 5000, 0, 0.16);
+    if (kind === 'lead') d = makeGuitarData(AC.sampleRate, freq, 0.34, 4.2, 3000, 0.34, false);
+    else if (kind === 'power') d = makeGuitarData(AC.sampleRate, freq, 0.44, 6.0, 2400, 0.30, true);
+    else if (kind === 'bass') d = makeBassData(AC.sampleRate, freq, 0.30, 2.6, 1400, 0.34);
+    else if (kind === 'pad') d = makeToneData(AC.sampleRate, freq, 0.55, 'pulse', 0.02, 0.30, 2600, 0.008, 0.16);
+    else d = makeToneData(AC.sampleRate, freq, 0.16, 'tri', 0.004, 0.09, 5200, 0, 0.20);
     tones[key] = bufFrom(d);
     return tones[key];
   }
   function drumBuf(kind){
     if (drums[kind]) return drums[kind];
-    var d = kind === 'kick' ? makeKickData(AC.sampleRate)
+    var d = kind === 'kick'  ? makeKickData(AC.sampleRate)
           : kind === 'snare' ? makeSnareData(AC.sampleRate)
+          : kind === 'ohat'  ? makeOpenHatData(AC.sampleRate)
+          : kind === 'crash' ? makeCrashData(AC.sampleRate)
           : makeHatData(AC.sampleRate);
     drums[kind] = bufFrom(d);
     return drums[kind];
@@ -470,28 +581,136 @@
     var cv = AC.createConvolver(); cv.buffer = ir; return cv;
   }
 
+  // --- 効果音（これもその場で波形を作る） ---
+  function makeSEData(kind, sr){
+    var n, out, i, t, ph = 0, f, e;
+    if (kind === 'tick') {                       // 弾が当たった：ごく短い乾いた音
+      n = Math.floor(sr * 0.035); out = new Float32Array(n);
+      var hp0 = 0, last0 = 0;
+      for (i = 0; i < n; i++){ t = i / sr;
+        var nz0 = Math.random() * 2 - 1;
+        hp0 = nz0 - last0; last0 = nz0;
+        ph += 2600 / sr;
+        out[i] = (hp0 * 0.6 + Math.sin(2 * Math.PI * ph) * 0.5) * Math.exp(-t / 0.008) * 0.6; }
+    } else if (kind === 'graze') {               // かすり：短くて高い、ごく小さな音
+      n = Math.floor(sr * 0.07); out = new Float32Array(n);
+      for (i = 0; i < n; i++){ t = i / sr; f = 1500 + 900 * (t / 0.07);
+        ph += f / sr; out[i] = Math.sin(2 * Math.PI * ph) * Math.exp(-t / 0.018) * 0.5; }
+    } else if (kind === 'kill') {                // 敵を散らす：短い破裂
+      n = Math.floor(sr * 0.16); out = new Float32Array(n);
+      var lp = 0;
+      for (i = 0; i < n; i++){ t = i / sr;
+        lp += ((Math.random() * 2 - 1) - lp) * 0.45;
+        f = 420 * Math.pow(0.25, t / 0.10); ph += f / sr;
+        out[i] = (lp * 0.8 + Math.sin(2 * Math.PI * ph) * 0.5) * Math.exp(-t / 0.045) * 0.6; }
+    } else if (kind === 'hit') {                 // 被弾：低くて重い
+      n = Math.floor(sr * 0.38); out = new Float32Array(n);
+      var lp2 = 0;
+      for (i = 0; i < n; i++){ t = i / sr;
+        lp2 += ((Math.random() * 2 - 1) - lp2) * 0.10;
+        f = 230 * Math.pow(0.18, t / 0.16); ph += f / sr;
+        out[i] = (Math.sin(2 * Math.PI * ph) * 0.8 + lp2 * 0.7) * Math.exp(-t / 0.13) * 0.75; }
+    } else if (kind === 'bomb') {                // 墨流し：低くうねって広がる
+      n = Math.floor(sr * 0.75); out = new Float32Array(n);
+      var lp3 = 0;
+      for (i = 0; i < n; i++){ t = i / sr;
+        lp3 += ((Math.random() * 2 - 1) - lp3) * (0.5 - 0.42 * (t / 0.75));
+        f = 700 * Math.pow(0.07, t / 0.45); ph += f / sr;
+        e = (t < 0.02 ? t / 0.02 : Math.exp(-(t - 0.02) / 0.26));
+        out[i] = (Math.sin(2 * Math.PI * ph) * 0.7 + lp3 * 0.9) * e * 0.58; }
+    } else if (kind === 'ready') {               // ゲージ満タン：澄んだ二音
+      n = Math.floor(sr * 0.42); out = new Float32Array(n);
+      for (i = 0; i < n; i++){ t = i / sr;
+        f = (t < 0.11) ? 784 : 1175;             // ソ → レ
+        ph += f / sr;
+        e = Math.exp(-((t < 0.11) ? t : t - 0.11) / 0.085);
+        out[i] = Math.sin(2 * Math.PI * ph) * e * 0.4; }
+    } else {                                     // 確定：軽く駆け上がる
+      n = Math.floor(sr * 0.26); out = new Float32Array(n);
+      var steps = [880, 1108, 1318];
+      for (i = 0; i < n; i++){ t = i / sr;
+        var k = Math.min(2, Math.floor(t / 0.07));
+        ph += steps[k] / sr;
+        e = Math.exp(-(t - k * 0.07) / 0.05);
+        out[i] = Math.sin(2 * Math.PI * ph) * e * 0.35; }
+    }
+    return out;
+  }
+  var seBufs = {}, seLast = {};
+  var SE_GAP = { tick:0.05, graze:0.045, kill:0.03, hit:0.2, bomb:0.3, ready:0.5, bank:0.2 };
+  function se(kind, pitch){
+    if (!AC || !musicOn) return;
+    var now = AC.currentTime;
+    if (seLast[kind] && now - seLast[kind] < (SE_GAP[kind] || 0.05)) return;
+    seLast[kind] = now;
+    if (!seBufs[kind]) {
+      var d = makeSEData(kind, AC.sampleRate);
+      var b = AC.createBuffer(1, d.length, AC.sampleRate);
+      b.getChannelData(0).set(d);
+      seBufs[kind] = b;
+    }
+    var s2 = AC.createBufferSource(); s2.buffer = seBufs[kind];
+    if (pitch) s2.playbackRate.value = pitch;
+    var LV = { tick:0.30, graze:0.45, kill:0.75, hit:1.00, bomb:0.90, ready:0.80, bank:0.80 };
+    var g = AC.createGain();
+    g.gain.value = LV[kind] || 0.8;
+    s2.connect(g); g.connect(seG);
+    if (kind === 'bomb' || kind === 'ready') g.connect(wetG);
+    s2.start(now);
+  }
+
   // --- 譜面を読む（音を出さずに試せるよう、鳴らすものの一覧を返すだけ） ---
   function eventsAt(step, intensity){
-    var ev = [];
-    var bar = Math.floor(step / 16) % 8;
+    var t = T(), ev = [];
+    var bars = t.mel.length / 16;
+    var bar = Math.floor(step / 16) % bars;
     var pos = step % 16;
     var ch  = bar % 4;
 
-    var m = MELODY[(step % (16 * 8))];
-    if (m !== null && m !== undefined) ev.push({ v:'lead', semi:m, base:A4, vol:0.5 });
+    // 旋律。いちばん大きく鳴らす
+    var m = t.mel[step % t.mel.length];
+    if (m !== null && m !== undefined) {
+      ev.push({ v:'lead', semi:m, base:LEAD_HZ, vol:t.lead.vol });
+      if (t.lead.echo) ev.push({ v:'lead', semi:m, base:LEAD_HZ, vol:t.lead.vol * 0.20, delay:t.lead.echo });
+    }
 
-    var b = BASS[pos];
-    if (b !== null && b !== undefined) ev.push({ v:'bass', semi:CHORD_ROOT[ch] + b, base:A2, vol:0.6 });
+    // 低音
+    var b = t.bass[pos];
+    if (b !== null && b !== undefined) ev.push({ v:'bass', semi:t.root[ch] + b, base:BASS_HZ, vol:0.62 });
 
-    if (KICK[pos])  ev.push({ v:'kick',  vol:0.85 });
-    if (SNARE[pos]) ev.push({ v:'snare', vol:0.5 });
-    if (pos % 2 === 0) ev.push({ v:'hat', vol:(pos % 4 === 0) ? 0.5 : 0.3 });
-    else if (intensity > 0.5) ev.push({ v:'hat', vol:0.2 });
+    // 和音（ポップのほうだけ）
+    for (var q = 0; q < t.padAt.length; q++) {
+      if (pos === t.padAt[q]) {
+        var tri = t.tri[ch];
+        for (var k = 0; k < tri.length; k++) ev.push({ v:'pad', semi:tri[k], base:LEAD_HZ, vol:0.22 });
+      }
+    }
 
-    if (intensity > 0.2) {
-      var tri = CHORD_TONE[ch];
-      var a = tri[(step % 3)] + 12;
-      ev.push({ v:'arp', semi:a, base:A4, vol:0.12 + 0.16 * intensity });
+    // 歪ませたパワーコード（根音と5度）。ロックの刻み
+    if (t.power && t.power[pos]) {
+      // 根音だけ渡す。5度とオクターブは音を作る側で重ねてから、まとめて歪ませる
+      ev.push({ v:'power', semi:t.root[ch] - 12, base:LEAD_HZ, vol:t.powerVol });
+    }
+
+    // ドラム
+    if (t.kick[pos])  ev.push({ v:'kick',  vol:0.58 });
+    if (t.snare[pos]) ev.push({ v:'snare', vol:0.55 });
+    // 4拍目の裏で小さく打つ（ロックの粘り）
+    if (pos === 7 || pos === 15) ev.push({ v:'snare', vol:0.13 });
+    // ハイハット。小節の終わりだけ開く
+    if (pos % t.hatEvery === 0) {
+      if (pos === 14) ev.push({ v:'ohat', vol:0.32 });
+      else ev.push({ v:'hat', vol:(pos % 4 === 0) ? 0.34 : 0.22 });
+    } else if (intensity > 0.5 && t.hatEvery <= 2) ev.push({ v:'hat', vol:0.16 });
+    // 4小節ごとの頭でクラッシュ
+    if (pos === 0 && bar % 4 === 0) ev.push({ v:'crash', vol:0.30 });
+
+    // 分散和音の伴奏
+    if (step % t.arpEvery === 0) {
+      var t2 = t.tri[ch];
+      var seq = [0, 1, 2, 1];
+      var a = t2[seq[Math.floor(step / t.arpEvery) % 4]] + 12;
+      ev.push({ v:'arp', semi:a, base:LEAD_HZ, vol:t.arpVol + 0.12 * intensity });
     }
     return ev;
   }
@@ -505,10 +724,13 @@
       var ev = eventsAt(stepN, inten);
       for (var i = 0; i < ev.length; i++){
         var e = ev[i];
-        if (e.v === 'lead')      shot(toneBuf('lead', hz(e.semi, e.base)), nextT, e.vol, true);
-        else if (e.v === 'bass') shot(toneBuf('bass', hz(e.semi, e.base)), nextT, e.vol, false);
-        else if (e.v === 'arp')  shot(toneBuf('arp',  hz(e.semi, e.base)), nextT, e.vol, true);
-        else                     shot(drumBuf(e.v), nextT, e.vol, e.v === 'snare');
+        var at = nextT + (e.delay ? e.delay * STEP : 0);
+        if (e.v === 'lead')      shot(toneBuf('lead', hz(e.semi, e.base)), at, e.vol, true);
+        else if (e.v === 'bass') shot(toneBuf('bass', hz(e.semi, e.base)), at, e.vol, false);
+        else if (e.v === 'pad')  shot(toneBuf('pad',  hz(e.semi, e.base)), at, e.vol, true);
+        else if (e.v === 'power') shot(toneBuf('power', hz(e.semi, e.base)), at, e.vol, false);
+        else if (e.v === 'arp')  shot(toneBuf('arp',  hz(e.semi, e.base)), at, e.vol, true);
+        else                     shot(drumBuf(e.v), at, e.vol, e.v === 'snare');
       }
       stepN++;
       nextT += STEP;
@@ -534,9 +756,10 @@
       if (!A) return;
       AC = new A();
       master = AC.createGain(); master.gain.value = 0; master.connect(AC.destination);
-      dryG = AC.createGain(); dryG.gain.value = 0.9; dryG.connect(master);
+      dryG = AC.createGain(); dryG.gain.value = 0.46;   // 音楽。効果音のぶん余裕を残す dryG.connect(master);
+      seG = AC.createGain(); seG.gain.value = 0.34; seG.connect(master);   // 効果音専用
       var rev = makeReverb();
-      wetG = AC.createGain(); wetG.gain.value = 0.16; wetG.connect(rev); rev.connect(master);
+      wetG = AC.createGain(); wetG.gain.value = 0.06; wetG.connect(rev); rev.connect(master);
       nextT = AC.currentTime + 0.12; stepN = 0;
       schedId = setInterval(schedule, 30);
       master.gain.linearRampToValueAtTime(targetGain(), AC.currentTime + 1.2);
@@ -798,6 +1021,7 @@
   function doBomb(){
     if (mode !== 'play' || gauge < 100) return;
     gauge = 0;
+    se('bomb');
     player.inv = Math.max(player.inv, 1.5);
     shake = reduced ? 0 : 11;
     waves.push({ x: player.x, y: player.y, r: 0 });
@@ -815,6 +1039,7 @@
     if (e.dead) return;
     e.dead = true;
     score += e.pts * mult();
+    se('kill');
     gauge = Math.min(100, gauge + (e.gz || 2.5));   // 倒してもゲージが溜まる
     if (e.type === 'boss') { bossAlive = false; shake = reduced ? 0 : 14; }
     splat(e.x, e.y, e.type === 'boss' ? 46 : 14, SUMI, e.type === 'boss' ? 190 : 130);
@@ -822,6 +1047,7 @@
   function hurt(){
     if (player.inv > 0) return;
     lives--;
+    se('hit');
     player.inv = 2.2;
     shake = reduced ? 0 : 13;
     graze = Math.floor(graze * 0.5);
@@ -899,6 +1125,7 @@
         var ddx = sh.x-en.x, ddy = sh.y-en.y;
         if (ddx*ddx + ddy*ddy < en.r*en.r) {
           en.hp -= 1; en.flash = 0.1;
+          se('tick');
           splat(sh.x, sh.y, 1, SUMI, 40);
           shots.splice(s,1);
           if (en.hp <= 0) killEnemy(en);
@@ -911,6 +1138,7 @@
     var gr2 = player.grazeR * player.grazeR;
     for (var b=bullets.length-1;b>=0;b--){
       var bu = bullets[b];
+      if (!bu) continue;   // 被弾のときに弾がまとめて消えることがある
       bu.x += bu.vx * dt; bu.y += bu.vy * dt;
       if (bu.x < -30 || bu.x > W+30 || bu.y < -40 || bu.y > H+40) { bullets.splice(b,1); continue; }
       if (mode !== 'play') continue;
@@ -919,6 +1147,7 @@
       if (d2 < hitR*hitR) { bullets.splice(b,1); hurt(); continue; }
       if (!bu.g && d2 < gr2 && player.inv <= 0) {
         bu.g = true; graze++; score += mult();
+        se('graze', 1 + (mult() - 1) * 0.10);
         gauge = Math.min(100, gauge + 1.7);
         parts.push({ x:bu.x, y:bu.y, vx:0, vy:-18, r:1.6, life:1, col:AI });
       }
@@ -1062,7 +1291,10 @@
   function syncHUD(){
     if (prev.score !== score) { elScore.textContent = score.toLocaleString('ja-JP'); prev.score = score; }
     var m = mult();
-    if (prev.mult !== m) { elMult.textContent = '×' + m; prev.mult = m; }
+    if (prev.mult !== m) {
+      if (prev.mult !== undefined && m > prev.mult) se('bank');   // 倍率が上がった合図
+      elMult.textContent = '×' + m; prev.mult = m;
+    }
     if (prev.graze !== graze) { elGraze.textContent = graze; prev.graze = graze; }
     if (prev.high !== high) { elHigh.textContent = high.toLocaleString('ja-JP'); prev.high = high; }
     if (prev.lives !== lives) {
@@ -1077,6 +1309,7 @@
     var g = Math.round(gauge);
     if (AC && prev.duck !== mode) { rampGain(0.6); prev.duck = mode; }
     if (prev.gauge !== g) {
+      if (g >= 100 && prev.gauge < 100) se('ready');
       elBar.style.width = g + '%';
       elGauge.classList.toggle('full', g >= 100);
       elBomb.classList.toggle('ready', g >= 100 && mode === 'play');
