@@ -1,5 +1,5 @@
 // ============================================================
-//  順位表の預かり所（Cloudflare Worker）
+//  順位表の預かり所（Cloudflare Worker ＋ D1）
 //
 //  やること
 //    GET  /board?game=tapioca        … 上位の一覧を返す
@@ -7,13 +7,15 @@
 //    POST /admin/remove              … 1件消す（合言葉が要る）
 //    POST /admin/clear               … そのゲームを空にする（合言葉が要る）
 //
-//  預かり方
-//    ゲーム1本につき KV のキーを1つだけ使い、上位20件をまとめて入れておく。
-//    上位に入らない点数は書き込まないので、無料枠の「書き込み1,000回/日」を
-//    使い切りにくい。
+//  なぜ D1 か
+//    KV は書いた内容が行き渡るまで時間がかかるため、二人がほぼ同時に
+//    点数を出すと片方が消えることがある。D1 は書いた内容がすぐ確実に
+//    反映されるので、順位表にはこちらが向く。
 //
-//  合言葉（ADMIN_KEY）と許す相手（ALLOW_ORIGIN）は、この file には書かない。
-//  Cloudflare の画面で「環境変数」として設定する。
+//  つなぐもの（Cloudflare の画面で設定する。ここには書かない）
+//    D1 database … 変数名 DB
+//    ALLOW_ORIGIN（Text）  … 許す相手
+//    ADMIN_KEY（Secret）   … 手入れ用の合言葉
 // ============================================================
 
 const TOP = 20;          // 順位表に残す件数
@@ -89,18 +91,20 @@ function cleanName(raw) {
   return s;
 }
 
-function sortBoard(list, order) {
-  const sign = (order === 'asc') ? 1 : -1;
-  return list.slice().sort((a, b) => (a.s - b.s) * sign || a.t - b.t);
+// 表が無ければ作る（初回だけ働く）
+async function ensure(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS scores (game TEXT NOT NULL, name TEXT NOT NULL, ' +
+    'score REAL NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (game, name))'
+  ).run();
 }
 
-async function readBoard(env, game) {
-  const raw = await env.SCORES.get('board:' + game);
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? v : [];
-  } catch (e) { return []; }
+async function board(env, game) {
+  const dir = GAMES[game].order === 'asc' ? 'ASC' : 'DESC';
+  const r = await env.DB
+    .prepare('SELECT name, score, at FROM scores WHERE game = ? ORDER BY score ' + dir + ', at ASC LIMIT ' + TOP)
+    .bind(game).all();
+  return (r.results || []).map(row => ({ n: row.name, s: row.score, t: row.at }));
 }
 
 // ------------------------------------------------------------
@@ -116,7 +120,7 @@ export default {
     // --- 説明（人が開いたとき） ---
     if (path === '/' && req.method === 'GET') {
       return new Response(
-        '順位表の預かり所です。\n' +
+        '順位表の預かり所です。（D1）\n' +
         '  GET  /board?game=<ゲーム名>\n' +
         '  POST /submit  {game, name, score}\n' +
         '取り扱うゲーム: ' + Object.keys(GAMES).join(', ') + '\n',
@@ -124,17 +128,25 @@ export default {
       );
     }
 
+    if (!env.DB) {
+      return json({ error: 'D1 がつながっていません。変数名が DB になっているか確認してください' }, 500, head);
+    }
+    try {
+      await ensure(env);
+    } catch (e) {
+      return json({ error: '表が用意できません: ' + (e && e.message) }, 500, head);
+    }
+
     // --- 一覧を返す ---
     if (path === '/board' && req.method === 'GET') {
       const game = url.searchParams.get('game') || '';
       if (!GAMES[game]) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
-      const list = await readBoard(env, game);
       return json({
         game: game,
         unit: GAMES[game].unit,
         order: GAMES[game].order,
-        list: sortBoard(list, GAMES[game].order).slice(0, TOP)
-      }, 200, Object.assign({ 'Cache-Control': 'public, max-age=20' }, head));
+        list: await board(env, game)
+      }, 200, head);
     }
 
     // --- 点数を受け取る ---
@@ -153,39 +165,39 @@ export default {
       if (typeof body.score !== 'number' || !isFinite(body.score)) {
         return json({ error: '点数がおかしいです' }, 400, head);
       }
-      const score = body.score;
-      if (score < 0 || score > rule.max) {
+      if (body.score < 0 || body.score > rule.max) {
         return json({ error: '点数がおかしいです' }, 400, head);
       }
-      const s = Math.round(score * 100) / 100;   // 小数第2位まで（タイム用）
+      const s = Math.round(body.score * 100) / 100;   // 小数第2位まで（タイム用）
 
-      const list = await readBoard(env, game);
+      // 同じ名前は良いほうだけ残す。
+      // 読んでから書くのではなく、1回の命令で入れ替えるので、
+      // 二人が同時に出しても取りこぼさない。
+      const better = rule.order === 'asc' ? '<' : '>';
+      await env.DB.prepare(
+        'INSERT INTO scores (game, name, score, at) VALUES (?, ?, ?, ?) ' +
+        'ON CONFLICT(game, name) DO UPDATE SET score = excluded.score, at = excluded.at ' +
+        'WHERE excluded.score ' + better + ' scores.score'
+      ).bind(game, name, s, Date.now()).run();
 
-      // 同じ名前は良いほうだけ残す
-      const others = list.filter(e => e.n !== name);
-      const mine = list.filter(e => e.n === name);
-      const best = mine.length
-        ? (rule.order === 'asc' ? Math.min(mine[0].s, s) : Math.max(mine[0].s, s))
-        : s;
+      // いまの持ち点と順位
+      const mine = await env.DB
+        .prepare('SELECT score FROM scores WHERE game = ? AND name = ?')
+        .bind(game, name).first();
+      const best = mine ? mine.score : s;
 
-      const merged = sortBoard(others.concat([{ n: name, s: best, t: Date.now() }]), rule.order);
-      const kept = merged.slice(0, TOP);
-      const rank = kept.findIndex(e => e.n === name && e.s === best);
-
-      // 上位に入らなかったときは書き込まない（無料枠を節約）
-      let stored = false;
-      const changed = mine.length ? (best !== mine[0].s) : (rank >= 0);
-      if (rank >= 0 && changed) {
-        await env.SCORES.put('board:' + game, JSON.stringify(kept));
-        stored = true;
-      }
+      const cnt = await env.DB
+        .prepare('SELECT COUNT(*) AS c FROM scores WHERE game = ? AND score ' + better + ' ?')
+        .bind(game, best).first();
+      const rank = (cnt ? cnt.c : 0) + 1;
 
       return json({
         ok: true,
-        stored: stored,
-        rank: rank >= 0 ? rank + 1 : null,
         name: name,
-        list: kept
+        best: best,
+        rank: rank,
+        inTop: rank <= TOP,
+        list: await board(env, game)
       }, 200, head);
     }
 
@@ -201,16 +213,14 @@ export default {
       if (!GAMES[game]) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
 
       if (path === '/admin/clear') {
-        await env.SCORES.put('board:' + game, '[]');
-        return json({ ok: true, cleared: game }, 200, head);
+        const r = await env.DB.prepare('DELETE FROM scores WHERE game = ?').bind(game).run();
+        return json({ ok: true, cleared: game, removed: r && r.meta ? r.meta.changes : null }, 200, head);
       }
       if (path === '/admin/remove') {
         const name = String(body.name || '');
-        const list = await readBoard(env, game);
-        const kept = list.filter(e => e.n !== name);
-        if (kept.length === list.length) return json({ ok: true, removed: 0 }, 200, head);
-        await env.SCORES.put('board:' + game, JSON.stringify(kept));
-        return json({ ok: true, removed: list.length - kept.length }, 200, head);
+        const r = await env.DB.prepare('DELETE FROM scores WHERE game = ? AND name = ?')
+          .bind(game, name).run();
+        return json({ ok: true, removed: r && r.meta ? r.meta.changes : null }, 200, head);
       }
     }
 
