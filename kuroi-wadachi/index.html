@@ -297,45 +297,77 @@
 <script>
 // ===== 黒い轍の音（ユーロビート）=====
 // 音源ファイルは使わず、波形をその場で作る。
-//   BGM  … 158拍/分、イ短調。四つ打ち・裏拍のオープンハイハット・
+//   BGM  … コースごとに別の曲。四つ打ち・裏拍のオープンハイハット・
 //           16分で転がるベース・ノコギリ波の主旋律という、ユーロビートの型。
-//   効果音 … タイヤの滑り（滑り具合で音量が変わる）、接触、カウントダウン、
-//           ゴール、記録更新、エンジン。
+//   タイヤの鳴き … 雑音を帯域で絞るだけでは「シャー」としか鳴らない。
+//           実物は共鳴した音程を持ち、滑るほど高くなり、細かく震える。
+//           そこで「高いQの帯域を3本＋低いうなり＋周波数と音量のゆらぎ」で作る。
 (function(){
   var actx = null, master = null, musicG = null, seG = null;
   var vol = 0.5, ready = false;
 
-  // ---------- 曲の設計 ----------
-  var BPM = 158;
-  var SPB = 60 / BPM;          // 1拍
-  var STP = SPB / 4;           // 16分音符
-  var BARS = 8;
-  var STEPS = BARS * 16;
-
-  // 和音の進行（イ短調）: Am F C G Am F C E
-  var ROOT = [110.00, 87.31, 130.81, 98.00, 110.00, 87.31, 130.81, 82.41];
-  var TRIAD = [
-    [220.00, 261.63, 329.63],   // Am
-    [174.61, 220.00, 261.63],   // F
-    [261.63, 329.63, 392.00],   // C
-    [196.00, 246.94, 293.66],   // G
-    [220.00, 261.63, 329.63],   // Am
-    [174.61, 220.00, 261.63],   // F
-    [261.63, 329.63, 392.00],   // C
-    [164.81, 207.65, 246.94]    // E
+  // ---------- 曲 ----------
+  // 音度は base からの半音。-1 は休み。
+  var TRACKS = [
+    { // 0 杉ノ沢（バランス）イ短調
+      bpm: 158, base: 220.00,
+      root:  [110.00, 87.31, 130.81, 98.00, 110.00, 87.31, 130.81, 82.41],
+      triad: [[220.00,261.63,329.63],[174.61,220.00,261.63],[261.63,329.63,392.00],
+              [196.00,246.94,293.66],[220.00,261.63,329.63],[174.61,220.00,261.63],
+              [261.63,329.63,392.00],[164.81,207.65,246.94]],
+      bass:  [0,0,12,0, 0,0,12,0, 0,0,12,0, 0,12,0,12],
+      lead: [
+        [12,-1,10,-1, 7,-1,10,-1, 12,-1,-1,15, 14,-1,12,-1],
+        [ 8,-1, 7,-1, 5,-1, 7,-1,  8,-1,-1,12, 10,-1, 8,-1],
+        [ 7,-1, 5,-1, 3,-1, 5,-1,  7,-1,-1,10, 12,-1,10,-1],
+        [10,-1,12,-1,14,-1,12,-1, 10,-1,-1, 7,  5,-1, 7,-1],
+        [12,-1,10,-1, 7,-1,10,-1, 12,-1,-1,15, 14,-1,12,-1],
+        [ 8,-1, 7,-1, 5,-1, 7,-1,  8,-1,-1,12, 10,-1, 8,-1],
+        [ 7,-1, 5,-1, 3,-1, 5,-1,  7,-1,-1,10, 12,-1,10,-1],
+        [ 7,-1, 8,-1,10,-1,12,-1, 14,-1,-1,-1, 11,-1, 7,-1]
+      ]
+    },
+    { // 1 鷹ノ巣（高速・長い）ハ短調・速め。ベースは16分でまっすぐ転がす
+      bpm: 168, base: 261.63,
+      root:  [130.81, 103.83, 155.56, 116.54, 130.81, 103.83, 87.31, 98.00],
+      triad: [[261.63,311.13,392.00],[207.65,261.63,311.13],[155.56,196.00,233.08],
+              [233.08,293.66,349.23],[261.63,311.13,392.00],[207.65,261.63,311.13],
+              [174.61,207.65,261.63],[196.00,246.94,293.66]],
+      bass:  [0,12,0,12, 0,12,0,12, 0,12,0,12, 0,12,0,12],
+      lead: [
+        [12,-1,15,-1, 14,-1,12,-1, 10,12,-1,10,  7,-1,10,-1],
+        [ 8,-1,12,-1, 15,-1,12,-1,  8,-1,-1, 7,  5,-1, 8,-1],
+        [ 7,-1,10,-1, 12,-1,15,-1, 14,-1,-1,12, 10,-1, 7,-1],
+        [10,-1,14,-1, 17,-1,14,-1, 10,-1,-1,12, 14,-1,10,-1],
+        [12,-1,15,-1, 14,-1,12,-1, 10,12,-1,10,  7,-1,10,-1],
+        [ 8,-1,12,-1, 15,-1,12,-1,  8,-1,-1, 7,  5,-1, 8,-1],
+        [ 7,-1,10,-1, 12,-1,15,-1, 14,-1,-1,12, 10,-1, 7,-1],
+        [ 7,-1, 8,-1, 11,-1,14,-1, 15,-1,-1,-1, 14,-1,11,-1]
+      ]
+    },
+    { // 2 蛇骨（ヘアピン連続）ホ短調・やや遅め。重く、跳ねる
+      bpm: 150, base: 164.81,
+      root:  [82.41, 130.81, 98.00, 73.42, 82.41, 130.81, 110.00, 123.47],
+      triad: [[164.81,196.00,246.94],[196.00,261.63,329.63],[196.00,246.94,293.66],
+              [146.83,185.00,220.00],[164.81,196.00,246.94],[196.00,261.63,329.63],
+              [220.00,261.63,329.63],[246.94,311.13,369.99]],
+      bass:  [0,0,0,12, 0,0,7,12, 0,0,0,12, 0,7,0,12],
+      lead: [
+        [12,-1,-1,10,  7,-1,10,-1, 12,-1,15,-1, 14,-1,12,-1],
+        [ 8,-1,-1, 7,  3,-1, 7,-1,  8,-1,12,-1, 15,-1,12,-1],
+        [10,-1,-1, 7,  3,-1, 7,-1, 10,-1,14,-1, 12,-1,10,-1],
+        [ 9,-1,-1,14, 12,-1, 9,-1,  5,-1, 9,-1, 12,-1, 9,-1],
+        [12,-1,-1,10,  7,-1,10,-1, 12,-1,15,-1, 14,-1,12,-1],
+        [ 8,-1,-1, 7,  3,-1, 7,-1,  8,-1,12,-1, 15,-1,12,-1],
+        [10,-1,-1, 7,  5,-1, 7,-1, 10,-1,14,-1, 12,-1,10,-1],
+        [11,-1,-1,14, 11,-1, 7,-1, 11,-1,-1,-1, 14,-1,11,-1]
+      ]
+    }
   ];
 
-  // 主旋律（イ短調の音度。-1 は休み。A3=220 を 0 とする半音）
-  var A3 = 220.0;
-  var M1 = [12,-1,10,-1, 7,-1,10,-1, 12,-1,-1,15, 14,-1,12,-1];
-  var M2 = [ 8,-1, 7,-1, 5,-1, 7,-1,  8,-1,-1,12, 10,-1, 8,-1];
-  var M3 = [ 7,-1, 5,-1, 3,-1, 5,-1,  7,-1,-1,10, 12,-1,10,-1];
-  var M4 = [10,-1,12,-1,14,-1,12,-1, 10,-1,-1, 7,  5,-1, 7,-1];
-  var M8 = [ 7,-1, 8,-1,10,-1,12,-1, 14,-1,-1,-1, 11,-1, 7,-1];
-  var LEAD = [M1, M2, M3, M4, M1, M2, M3, M8];
-
-  // ベース（各小節の根音に対する半音。16分で転がす）
-  var BASS = [0,0,12,0, 0,0,12,0, 0,0,12,0, 0,12,0,12];
+  var T = TRACKS[0];
+  var SPB = 60 / T.bpm, STP = SPB / 4;
+  var STEPS = 8 * 16;
 
   function semi(base, n){ return base * Math.pow(2, n / 12); }
 
@@ -351,48 +383,38 @@
     b.getChannelData(0).set(d);
     return b;
   }
-
-  // バスドラム：120Hz から 45Hz へ落ちる正弦波＋立ち上がりの当たり
   function kickData(sr){
     var dur = 0.30, n = Math.round(sr * dur), d = new Float32Array(n), ph = 0;
     for (var i = 0; i < n; i++){
       var t = i / sr;
       var f = 45 + 78 * Math.exp(-t / 0.028);
       ph += 2 * Math.PI * f / sr;
-      var e = Math.exp(-t / 0.085);
-      d[i] = Math.sin(ph) * e + (Math.random()*2-1) * Math.exp(-t / 0.004) * 0.35;
+      d[i] = Math.sin(ph) * Math.exp(-t / 0.085)
+           + (Math.random()*2-1) * Math.exp(-t / 0.004) * 0.35;
     }
     return norm(d, 0.95);
   }
-  // クラップ：短い雑音を3回はじいて、余韻を付ける
   function clapData(sr){
     var dur = 0.26, n = Math.round(sr * dur), d = new Float32Array(n);
-    var hits = [0, 0.011, 0.023];
-    var y = 0;
+    var hits = [0, 0.011, 0.023], y = 0;
     for (var i = 0; i < n; i++){
       var t = i / sr, a = 0;
-      for (var h = 0; h < hits.length; h++){
-        if (t >= hits[h]) a += Math.exp(-(t - hits[h]) / 0.012);
-      }
-      a += Math.exp(-t / 0.10) * 0.55;             // 余韻
-      y += 0.55 * ((Math.random()*2-1) - y);       // 少し丸めた雑音
+      for (var h = 0; h < hits.length; h++) if (t >= hits[h]) a += Math.exp(-(t - hits[h]) / 0.012);
+      a += Math.exp(-t / 0.10) * 0.55;
+      y += 0.55 * ((Math.random()*2-1) - y);
       d[i] = y * a;
     }
     return norm(d, 0.9);
   }
-  // ハイハット：高い雑音。open=true で余韻を長く
   function hatData(sr, open){
-    var dur = open ? 0.24 : 0.055, n = Math.round(sr * dur), d = new Float32Array(n);
-    var prev = 0;
+    var dur = open ? 0.24 : 0.055, n = Math.round(sr * dur), d = new Float32Array(n), prev = 0;
     for (var i = 0; i < n; i++){
-      var t = i / sr;
-      var w = Math.random()*2-1;
-      var hp = w - prev; prev = w;                 // 単純な高域通過
+      var t = i / sr, w = Math.random()*2-1;
+      var hp = w - prev; prev = w;
       d[i] = hp * Math.exp(-t / (open ? 0.075 : 0.012));
     }
     return norm(d, 0.75);
   }
-  // クラッシュ：曲の頭で鳴らす
   function crashData(sr){
     var dur = 1.1, n = Math.round(sr * dur), d = new Float32Array(n), prev = 0;
     for (var i = 0; i < n; i++){
@@ -402,24 +424,21 @@
     }
     return norm(d, 0.7);
   }
-  // タイヤの滑り：ずっと鳴らしておく雑音の輪
-  function skidData(sr){
-    var n = Math.round(sr * 1.0), d = new Float32Array(n), y1 = 0, y2 = 0;
+  // 鳴きのもとになる雑音。低いほうを少し残して、帯域で絞ったときに芯が出るようにする
+  function noiseData(sr){
+    var n = Math.round(sr * 1.5), d = new Float32Array(n), y = 0;
     for (var i = 0; i < n; i++){
       var w = Math.random()*2-1;
-      y1 += 0.28 * (w - y1);                        // 低いほうを削る
-      y2 += 0.62 * (y1 - y2);
-      d[i] = (y1 - y2) * 3.2;
+      y += 0.5 * (w - y);
+      d[i] = w * 0.65 + y * 0.35;
     }
-    // つなぎ目をなめらかに
-    var f = Math.round(sr * 0.01);
+    var f = Math.round(sr * 0.012);
     for (var k = 0; k < f; k++){
       var g = k / f;
       d[k] = d[k] * g + d[n-1-k] * (1-g);
     }
-    return norm(d, 0.8);
+    return norm(d, 0.85);
   }
-  // 接触：低い衝撃＋こすれ
   function hitData(sr){
     var dur = 0.35, n = Math.round(sr * dur), d = new Float32Array(n), y = 0;
     for (var i = 0; i < n; i++){
@@ -433,7 +452,7 @@
   var B = {};
 
   // ---------- 音を出す道具 ----------
-  function hit(b, gain, rate, bus){
+  function one(b, gain, rate, bus){
     if (!actx || !b) return;
     var s = actx.createBufferSource();
     s.buffer = b;
@@ -443,7 +462,6 @@
     s.connect(g); g.connect(bus || musicG);
     try { s.start(); } catch(e){}
   }
-  // ノコギリ波を1音
   function saw(freq, t, dur, gain, cut, detune, bus){
     if (!actx) return;
     var g = actx.createGain();
@@ -470,22 +488,22 @@
 
   function schedule(s, t){
     var bar = Math.floor(s / 16), k = s % 16;
-    var root = ROOT[bar];
+    var root = T.root[bar];
 
-    if (k % 4 === 0) hit(B.kick, 0.85, 1, musicG);                 // 四つ打ち
-    if (k === 4 || k === 12) hit(B.clap, 0.55, 1, musicG);         // 2拍目・4拍目
-    if (k % 2 === 0) hit(B.hat, 0.26, 1, musicG);                  // 8分の刻み
-    if (k % 4 === 2) hit(B.hatO, 0.22, 1, musicG);                 // 裏拍の open
-    if (s === 0) hit(B.crash, 0.35, 1, musicG);
+    if (k % 4 === 0) one(B.kick, 0.85, 1, musicG);
+    if (k === 4 || k === 12) one(B.clap, 0.55, 1, musicG);
+    if (k % 2 === 0) one(B.hat, 0.26, 1, musicG);
+    if (k % 4 === 2) one(B.hatO, 0.22, 1, musicG);
+    if (s === 0) one(B.crash, 0.35, 1, musicG);
 
-    var bn = BASS[k];
+    var bn = T.bass[k];
     if (bn >= 0) saw(semi(root, bn), t, STP * 0.85, 0.30, 900, 0, musicG);
 
-    var ln = LEAD[bar][k];
-    if (ln >= 0) saw(semi(A3, ln), t, STP * 1.7, 0.16, 3200, 9, musicG);
+    var ln = T.lead[bar][k];
+    if (ln >= 0) saw(semi(T.base, ln), t, STP * 1.7, 0.16, 3200, 9, musicG);
 
-    if (k === 0){                                                   // 和音の当て
-      var c = TRIAD[bar];
+    if (k === 0){
+      var c = T.triad[bar];
       for (var i = 0; i < 3; i++) saw(c[i], t, SPB * 0.42, 0.055, 2400, 6, musicG);
     }
   }
@@ -518,36 +536,72 @@
   function arp(list, step, dur, gain){
     if (!actx) return;
     var t0 = actx.currentTime;
-    for (var i = 0; i < list.length; i++){
-      saw(list[i], t0 + i * step, dur, gain, 3600, 8, seG);
-    }
+    for (var i = 0; i < list.length; i++) saw(list[i], t0 + i * step, dur, gain, 3600, 8, seG);
   }
 
   // ---------- 走っている間の音 ----------
-  var skidSrc = null, skidG = null, skidF = null;
+  var noiseSrc = null;
+  var sqIn = null, sqBp = [], sqTrem = null;
+  var roarIn = null, roarBp = null;
   var engG = null, engO = [], engF = null;
 
   function makeLive(){
-    // タイヤの滑り
-    skidG = actx.createGain(); skidG.gain.value = 0;
-    skidF = actx.createBiquadFilter();
-    skidF.type = 'bandpass'; skidF.frequency.value = 2300; skidF.Q.value = 1.1;
-    skidG.connect(skidF); skidF.connect(seG);
-    skidSrc = actx.createBufferSource();
-    skidSrc.buffer = B.skid; skidSrc.loop = true;
-    skidSrc.connect(skidG);
-    try { skidSrc.start(); } catch(e){}
+    noiseSrc = actx.createBufferSource();
+    noiseSrc.buffer = B.noise; noiseSrc.loop = true;
 
-    // エンジン（低く、控えめに）
+    // --- タイヤの鳴き ---
+    sqIn = actx.createGain(); sqIn.gain.value = 0;
+    noiseSrc.connect(sqIn);
+
+    sqTrem = actx.createGain(); sqTrem.gain.value = 0.78;
+    sqTrem.connect(seG);
+
+    var Qs = [16, 21, 10], gs = [1.0, 0.75, 0.45];
+    for (var i = 0; i < 3; i++){
+      var bp = actx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 900;
+      bp.Q.value = Qs[i];
+      var g = actx.createGain(); g.gain.value = gs[i];
+      sqIn.connect(bp); bp.connect(g); g.connect(sqTrem);
+      sqBp.push(bp);
+    }
+
+    // 周波数のゆらぎ（くっついては滑る のふるえ）
+    var lfoF = actx.createOscillator();
+    lfoF.type = 'sine'; lfoF.frequency.value = 7.3;
+    var lfoFG = actx.createGain(); lfoFG.gain.value = 34;
+    lfoF.connect(lfoFG);
+    lfoFG.connect(sqBp[0].frequency);
+    var lfoFG2 = actx.createGain(); lfoFG2.gain.value = 52;
+    lfoF.connect(lfoFG2); lfoFG2.connect(sqBp[1].frequency);
+    try { lfoF.start(); } catch(e){}
+
+    // 音量のばたつき
+    var lfoA = actx.createOscillator();
+    lfoA.type = 'sine'; lfoA.frequency.value = 11.5;
+    var lfoAG = actx.createGain(); lfoAG.gain.value = 0.22;
+    lfoA.connect(lfoAG); lfoAG.connect(sqTrem.gain);
+    try { lfoA.start(); } catch(e){}
+
+    // --- 路面を転がるうなり ---
+    roarIn = actx.createGain(); roarIn.gain.value = 0;
+    noiseSrc.connect(roarIn);
+    roarBp = actx.createBiquadFilter();
+    roarBp.type = 'bandpass'; roarBp.frequency.value = 330; roarBp.Q.value = 1.1;
+    roarIn.connect(roarBp); roarBp.connect(seG);
+
+    try { noiseSrc.start(); } catch(e){}
+
+    // --- エンジン ---
     engG = actx.createGain(); engG.gain.value = 0;
     engF = actx.createBiquadFilter();
     engF.type = 'lowpass'; engF.frequency.value = 620; engF.Q.value = 0.8;
     engG.connect(engF); engF.connect(seG);
-    for (var i = 0; i < 2; i++){
+    for (var j = 0; j < 2; j++){
       var o = actx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.value = 70;
-      o.detune.value = i ? 11 : -11;
+      o.type = 'sawtooth'; o.frequency.value = 70;
+      o.detune.value = j ? 11 : -11;
       o.connect(engG);
       try { o.start(); } catch(e){}
       engO.push(o);
@@ -560,7 +614,7 @@
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     try { actx = new AC(); } catch(e){ actx = null; return; }
-    master = actx.createGain(); master.gain.value = vol * 0.55;   // 重なっても割れない余裕
+    master = actx.createGain(); master.gain.value = vol * 0.55;
     master.connect(actx.destination);
     musicG = actx.createGain(); musicG.gain.value = 0.42; musicG.connect(master);
     seG = actx.createGain(); seG.gain.value = 0.5; seG.connect(master);
@@ -571,7 +625,7 @@
     B.hat   = buf(hatData(sr, false));
     B.hatO  = buf(hatData(sr, true));
     B.crash = buf(crashData(sr));
-    B.skid  = buf(skidData(sr));
+    B.noise = buf(noiseData(sr));
     B.hit   = buf(hitData(sr));
     makeLive();
     ready = true;
@@ -584,8 +638,15 @@
       init();
       if (actx && actx.state === 'suspended'){ try { actx.resume(); } catch(e){} }
     },
-    start: function(){
+    // コース番号で曲を選ぶ
+    setTrack: function(i){
+      T = TRACKS[Math.max(0, Math.min(TRACKS.length - 1, i | 0))];
+      SPB = 60 / T.bpm; STP = SPB / 4;
+    },
+    trackInfo: function(){ return { bpm: T.bpm, base: T.base }; },
+    start: function(course){
       this.init();
+      if (typeof course === 'number') this.setTrack(course);
       if (!ready) return;
       playing = true;
       nextStep = 0;
@@ -597,15 +658,17 @@
       if (!ready) return;
       playing = false;
       musicG.gain.setTargetAtTime(0, actx.currentTime, 0.08);
-      if (skidG) skidG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
-      if (engG) engG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      sqIn.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      roarIn.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      engG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
     },
     pause: function(on){
       if (!ready) return;
       musicG.gain.setTargetAtTime(on ? 0 : 0.42, actx.currentTime, 0.06);
       if (on){
-        if (skidG) skidG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
-        if (engG) engG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
+        sqIn.gain.setTargetAtTime(0, actx.currentTime, 0.04);
+        roarIn.gain.setTargetAtTime(0, actx.currentTime, 0.04);
+        engG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
       }
     },
     count: function(n){
@@ -614,27 +677,37 @@
       if (n > 0) beep(880, 0.10, 0.5);
       else beep(1320, 0.30, 0.55);
     },
-    hitWall: function(){ if (ready) hit(B.hit, 0.6, 0.9 + Math.random()*0.25, seG); },
+    hitWall: function(){ if (ready) one(B.hit, 0.6, 0.9 + Math.random()*0.25, seG); },
     goal: function(isNew){
       if (!ready) return;
       if (isNew) arp([440, 554.37, 659.25, 880, 1108.73], 0.075, 0.32, 0.14);
       else arp([440, 523.25, 659.25], 0.085, 0.30, 0.13);
     },
-    fail: function(){
-      if (!ready) return;
-      arp([330, 277.18, 220], 0.10, 0.34, 0.13);
-    },
+    fail: function(){ if (ready) arp([330, 277.18, 220], 0.10, 0.34, 0.13); },
+
     // 毎こま。走っている状態を渡す
     tick: function(st, sliding, slip, sp){
       if (!ready) return;
       pump();
       var t = actx.currentTime;
       var run = (st === 'play');
+      var fast = Math.min(1, sp / 260);
+
+      // 鳴き：滑り具合で開き、滑るほど・速いほど高くなる
       var want = 0;
-      if (run && sliding) want = Math.min(0.5, 0.10 + slip * 0.9) * Math.min(1, sp / 180);
-      skidG.gain.setTargetAtTime(want, t, 0.035);
-      skidF.frequency.setTargetAtTime(1700 + Math.min(1, sp / 260) * 1500, t, 0.08);
-      var ef = 62 + Math.min(1, sp / 300) * 95;
+      if (run && sliding) want = Math.min(0.85, 0.22 + slip * 1.5) * Math.min(1, sp / 150);
+      sqIn.gain.setTargetAtTime(want, t, 0.030);
+      var f0 = 620 + Math.min(1.0, slip * 2.2) * 900 + fast * 520;
+      sqBp[0].frequency.setTargetAtTime(f0, t, 0.05);
+      sqBp[1].frequency.setTargetAtTime(f0 * 1.48, t, 0.05);
+      sqBp[2].frequency.setTargetAtTime(f0 * 2.15, t, 0.05);
+
+      // 路面のうなり：速度だけで決まる
+      roarIn.gain.setTargetAtTime(run ? 0.16 * fast : 0, t, 0.09);
+      roarBp.frequency.setTargetAtTime(270 + fast * 190, t, 0.09);
+
+      // エンジン
+      var ef = 62 + fast * 95;
       for (var i = 0; i < engO.length; i++) engO[i].frequency.setTargetAtTime(ef, t, 0.06);
       engG.gain.setTargetAtTime(run ? 0.10 : 0, t, 0.08);
     },
@@ -952,7 +1025,7 @@
     lastSlip = 0; lastSp = 0;
   }
   function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
-    if (window.WADACHI_AUDIO) WADACHI_AUDIO.start();
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
     reset(); st = 'count'; countT = 3.2; countEl.classList.remove('off'); veil.classList.add('off'); lastT = 0; }
   function showTitle(){
     st = 'title'; reset();
