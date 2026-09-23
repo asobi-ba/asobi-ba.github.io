@@ -926,7 +926,7 @@
   var idx = 0, time = 0, best = 0, countT = 0;
   var score = 0, pending = 0, mult = 1, driftT = 0, idleT = 0, sliding = false;
   var marks = [], smoke = [], lastWheels = null, hitT = 0, stuckT = 0, holdT = 0, steerV = 0;
-  var lastSlip = 0;                      // 音に渡す用
+  var lastSlip = 0, lastSp = 0;          // 音に渡す用（sp は step() の中だけの変数なので写す）
 
   var bests = [0,0,0];
   function loadBest(){
@@ -949,6 +949,7 @@
     nextGate = 0; gatePrevS = null;
     score = 0; pending = 0; mult = 1; driftT = 0; idleT = 0; sliding = false;
     marks.length = 0; smoke.length = 0; lastWheels = null; hitT = 0; stuckT = 0; holdT = 0; steerV = 0;
+    lastSlip = 0; lastSp = 0;
   }
   function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.start();
@@ -1140,6 +1141,7 @@
 
     // 滑り具合
     sp = Math.hypot(car.vx, car.vy);
+    lastSp = sp;
     var slip = Math.abs(Math.atan2(lat, Math.max(18, fwd)));
     lastSlip = slip;
     sliding = (slip > 0.18 && sp > 80 && onRoad);
@@ -1343,7 +1345,7 @@
     if (!lastT) { lastT = now; return; }
     var dt = Math.min(0.05, (now - lastT)/1000);
     lastT = now;
-    if (window.WADACHI_AUDIO) WADACHI_AUDIO.tick(st, sliding, lastSlip, sp);
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.tick(st, sliding, lastSlip, lastSp);
     if (st !== 'pause') {
       acc += dt;
       var g = 0;
