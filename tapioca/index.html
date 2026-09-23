@@ -182,6 +182,41 @@
     background:rgba(217,184,138,.92);color:var(--sumi);
   }
   .veil.off{display:none}
+
+  /* ===== 順位表 ===== */
+  .rank{
+    width:min(100%,320px);font-size:12px;line-height:1.5;
+    display:flex;flex-direction:column;gap:6px;
+  }
+  .rank.hide{display:none}
+  .rank .rk-t{font-size:10.5px;letter-spacing:.18em;opacity:.7}
+  .rank ol{
+    list-style:none;margin:0;padding:0;
+    display:flex;flex-direction:column;gap:2px;
+    font-variant-numeric:tabular-nums;
+  }
+  .rank li{display:flex;gap:8px;align-items:baseline}
+  .rank li .p{width:2.2em;text-align:right;opacity:.6}
+  .rank li .n{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rank li .s{font-weight:700}
+  .rank li.me{color:var(--shu);font-weight:700}
+  .rank li.me .p,.rank li.me .n{opacity:1}
+  .rank .rk-form{display:flex;gap:6px;align-items:center}
+  .rank .rk-form input{
+    flex:1;min-width:0;font:inherit;font-size:13px;
+    padding:6px 8px;box-sizing:border-box;
+    color:var(--sumi);background:rgba(255,255,255,.5);
+    border:1px solid rgba(26,21,18,.3);border-radius:2px;
+  }
+  .rank .rk-form button{
+    font:inherit;font-size:12px;font-weight:700;white-space:nowrap;
+    padding:7px 12px;cursor:pointer;
+    color:var(--sheet);background:var(--sumi);border:none;border-radius:2px;
+  }
+  .rank .rk-form button:disabled{opacity:.45;cursor:default}
+  .rank .rk-msg{font-size:11px;opacity:.75;min-height:1.2em}
+  .rank .rk-msg.ng{color:var(--shu);opacity:1}
+  .rank .rk-warn{font-size:10px;opacity:.6}
   .veil .big{
     margin:0;font-family:'Shippori Mincho',serif;font-weight:700;
     font-size:clamp(30px,10vw,44px);letter-spacing:.3em;text-indent:.3em;line-height:1.1;
@@ -296,6 +331,7 @@
           <div>敵を散らすかかすると下の線が溜まる。満ちたら<b>一気飲み</b>で画面ごと空にできる。</div>
         </div>
         <p id="veilNote">PCはマウスを動かすだけ。右クリックで一気飲み。スマホは指でなぞる。</p>
+        <div class="rank hide" id="rankBox" data-game="tapioca"></div>
         <button class="go" id="goBtn" type="button">はじめる</button>
       </div>
     </div>
@@ -896,7 +932,10 @@
   }
 
   elBomb.addEventListener('click', function(){ doBomb(); });
-  goBtn.addEventListener('click', function(){ if (mode === 'pause') setPause(false); else startGame(); });
+  goBtn.addEventListener('click', function(){
+    if (window.SCOREBOARD) SCOREBOARD.hide();
+    if (mode === 'pause') setPause(false); else startGame();
+  });
 
   // ---------- 画面の切り替え ----------
   function showVeil(title, bodyHTML, note, btn){
@@ -925,6 +964,7 @@
     mode = 'over';
     var isNew = score > high;
     if (isNew) { high = score; saveHigh(); }
+    if (window.SCOREBOARD) SCOREBOARD.over(score);
     showVeil('終',
       '<div class="final">' + score.toLocaleString('ja-JP') + '</div>' +
       (isNew ? '<div class="note">サイコウ コウシン</div>' : '<div class="note">サイコウ ' + high.toLocaleString('ja-JP') + '</div>') +
@@ -1420,6 +1460,122 @@
   document.addEventListener('fullscreenchange', sync);
   document.addEventListener('webkitfullscreenchange', sync);
   sync();
+})();
+</script>
+
+<script>
+// ===== 順位表（みんなで共有）=====
+// 送るのは「ゲーム名・入力した名前・点数」だけ。ほかは送らない。
+(function(){
+  var API  = 'https://game-scores.pdylplplp.workers.dev';
+  var box  = document.getElementById('rankBox');
+  if (!box) return;
+  var GAME = box.getAttribute('data-game') || '';
+  var KEY  = 'score.name';
+
+  var unit = '';
+  var myName = '';
+  try { myName = localStorage.getItem(KEY) || ''; } catch(e){}
+
+  function esc(s){
+    return String(s).replace(/[&<>"]/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+    });
+  }
+  function fmt(v){
+    return (Math.round(v * 100) / 100).toLocaleString('ja-JP');
+  }
+  function listHTML(list, mine, top){
+    if (!list || !list.length) return '<div class="rk-msg">まだ誰も出していません</div>';
+    var out = '<ol>';
+    for (var i = 0; i < Math.min(list.length, top || 5); i++){
+      var e = list[i];
+      out += '<li' + (mine && e.n === mine ? ' class="me"' : '') + '>'
+           + '<span class="p">' + (i+1) + '</span>'
+           + '<span class="n">' + esc(e.n) + '</span>'
+           + '<span class="s">' + fmt(e.s) + unit + '</span></li>';
+    }
+    return out + '</ol>';
+  }
+
+  function get(url){
+    return fetch(url, { cache:'no-store' }).then(function(r){ return r.json(); });
+  }
+
+  // 題字の画面：上位だけ見せる
+  function showTop(){
+    box.classList.remove('hide');
+    box.innerHTML = '<div class="rk-t">ミンナノ ジュンイ</div><div class="rk-msg">読み込み中…</div>';
+    get(API + '/board?game=' + encodeURIComponent(GAME)).then(function(d){
+      if (d.error) throw new Error(d.error);
+      unit = d.unit || '';
+      box.innerHTML = '<div class="rk-t">ミンナノ ジュンイ</div>' + listHTML(d.list, myName, 5);
+    }).catch(function(){
+      box.innerHTML = '<div class="rk-t">ミンナノ ジュンイ</div>'
+                    + '<div class="rk-msg">いまは見られません</div>';
+    });
+  }
+
+  // 遊び終わり：名前を入れて送る
+  function showSubmit(score){
+    box.classList.remove('hide');
+    box.innerHTML =
+      '<div class="rk-t">ジュンイヒョウ ニ オクル</div>'
+      + '<div class="rk-form">'
+      +   '<input id="rkName" type="text" maxlength="12" placeholder="ニックネーム" '
+      +     'value="' + esc(myName) + '" autocomplete="off">'
+      +   '<button id="rkSend" type="button">送る</button>'
+      + '</div>'
+      + '<div class="rk-warn">本名は入れないでください。12文字まで。</div>'
+      + '<div class="rk-msg" id="rkMsg"></div>';
+
+    var inp = document.getElementById('rkName');
+    var btn = document.getElementById('rkSend');
+    var msg = document.getElementById('rkMsg');
+
+    btn.addEventListener('click', function(){
+      var nm = (inp.value || '').trim();
+      if (!nm){ msg.textContent = '名前を入れてください'; msg.className = 'rk-msg ng'; inp.focus(); return; }
+      btn.disabled = true;
+      msg.className = 'rk-msg';
+      msg.textContent = '送っています…';
+      fetch(API + '/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ game: GAME, name: nm, score: score })
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.error){
+          msg.textContent = d.error;
+          msg.className = 'rk-msg ng';
+          btn.disabled = false;
+          return;
+        }
+        myName = d.name;
+        try { localStorage.setItem(KEY, myName); } catch(e){}
+        unit = unit || '';
+        box.innerHTML = '<div class="rk-t">'
+          + (d.inTop ? d.rank + 'イ' : d.rank + 'イ（20イ マデ ノラナイ）') + '</div>'
+          + listHTML(d.list, myName, 5);
+      }).catch(function(){
+        msg.textContent = '送れませんでした。あとでもう一度。';
+        msg.className = 'rk-msg ng';
+        btn.disabled = false;
+      });
+    });
+
+    inp.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' && !e.isComposing) btn.click();
+    });
+  }
+
+  window.SCOREBOARD = {
+    top: showTop,
+    over: showSubmit,
+    hide: function(){ box.classList.add('hide'); }
+  };
+
+  // 題字の画面から始まるので、最初に上位を見せておく
+  showTop();
 })();
 </script>
 </body>
