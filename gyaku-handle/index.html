@@ -196,6 +196,42 @@
   .veil > :last-child{margin-bottom:auto}
   .veil > *{flex:0 0 auto}
   .veil.off{display:none}
+
+  /* ===== 順位表 ===== */
+  .lb{
+    width:min(100%,320px);font-size:12px;line-height:1.5;color:inherit;
+    display:flex;flex-direction:column;gap:6px;
+  }
+  .lb.hide{display:none}
+  .lb .lb-t{font-size:10.5px;letter-spacing:.18em;opacity:.65}
+  .lb ol{
+    list-style:none;margin:0;padding:0;
+    display:flex;flex-direction:column;gap:2px;
+    font-variant-numeric:tabular-nums;
+  }
+  .lb li{display:flex;gap:8px;align-items:baseline}
+  .lb li .p{width:2.2em;text-align:right;opacity:.55}
+  .lb li .n{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lb li .s{font-weight:700}
+  .lb li.me{font-weight:700;text-decoration:underline;text-underline-offset:3px}
+  .lb li.me .p,.lb li.me .n,.lb li.me .s{opacity:1}
+  .lb .lb-form{display:flex;gap:6px;align-items:center}
+  .lb .lb-form input{
+    flex:1;min-width:0;font:inherit;font-size:13px;
+    padding:6px 8px;box-sizing:border-box;color:inherit;
+    background:rgba(127,127,127,.18);
+    border:1px solid rgba(127,127,127,.5);border-radius:2px;
+  }
+  .lb .lb-form button{
+    font:inherit;font-size:12px;font-weight:700;white-space:nowrap;
+    padding:7px 12px;cursor:pointer;color:inherit;
+    background:rgba(127,127,127,.3);
+    border:1px solid rgba(127,127,127,.55);border-radius:2px;
+  }
+  .lb .lb-form button:disabled{opacity:.45;cursor:default}
+  .lb .lb-msg{font-size:11px;opacity:.75;min-height:1.2em}
+  .lb .lb-msg.ng{opacity:1;font-weight:700}
+  .lb .lb-warn{font-size:10px;opacity:.55}
   .veil h2{
     margin:0;font-family:'Zen Old Mincho',serif;font-weight:700;
     font-size:clamp(21px,5.6vw,29px);letter-spacing:.22em;text-indent:.22em;
@@ -278,6 +314,7 @@
         <div class="veil" id="veil">
           <h2 id="veilTitle">逆ハンドル</h2>
           <div id="veilBody"></div>
+          <div class="lb hide" id="lbBox"></div>
           <div class="tip" id="veilTip">
             バックでハンドルを右へ切ると、荷台の尻は<b>左</b>へ出ます。<br>
             折れ角が<b>110度</b>になると、それ以上は下がれません。前へ出して切り返します。<br>
@@ -302,6 +339,113 @@
     <span>スマホは下のボタン</span>
   </div>
 </div>
+
+<script>
+// ===== 順位表（みんなで共有）=====
+// 送るのは「ゲーム名・入力した名前・点数」だけ。ほかは送らない。
+(function(){
+  var API = 'https://game-scores.pdylplplp.workers.dev';
+  var box = document.getElementById('lbBox');
+  if (!box) return;
+  var KEY = 'score.name';
+
+  var unit = '';
+  var myName = '';
+  try { myName = localStorage.getItem(KEY) || ''; } catch(e){}
+
+  function esc(s){
+    return String(s).replace(/[&<>"]/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+    });
+  }
+  function fmt(v){ return (Math.round(v * 100) / 100).toLocaleString('ja-JP'); }
+
+  function listHTML(list, top){
+    if (!list || !list.length) return '<div class="lb-msg">まだ誰も出していません</div>';
+    var out = '<ol>';
+    for (var i = 0; i < Math.min(list.length, top || 5); i++){
+      var e = list[i];
+      out += '<li' + (myName && e.n === myName ? ' class="me"' : '') + '>'
+           + '<span class="p">' + (i+1) + '</span>'
+           + '<span class="n">' + esc(e.n) + '</span>'
+           + '<span class="s">' + fmt(e.s) + unit + '</span></li>';
+    }
+    return out + '</ol>';
+  }
+
+  // 題字の画面：上位だけ見せる
+  function showTop(game){
+    box.classList.remove('hide');
+    box.innerHTML = '<div class="lb-t">ミンナノ ジュンイ</div><div class="lb-msg">読み込み中…</div>';
+    fetch(API + '/board?game=' + encodeURIComponent(game), { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) throw new Error(d.error);
+        unit = d.unit || '';
+        box.innerHTML = '<div class="lb-t">ミンナノ ジュンイ</div>' + listHTML(d.list, 5);
+      })
+      .catch(function(){
+        box.innerHTML = '<div class="lb-t">ミンナノ ジュンイ</div>'
+                      + '<div class="lb-msg">いまは見られません</div>';
+      });
+  }
+
+  // 遊び終わり：名前を入れて送る
+  function showSubmit(game, score){
+    box.classList.remove('hide');
+    box.innerHTML =
+      '<div class="lb-t">ジュンイヒョウ ニ オクル</div>'
+      + '<div class="lb-form">'
+      +   '<input id="lbName" type="text" maxlength="12" placeholder="ニックネーム" '
+      +     'value="' + esc(myName) + '" autocomplete="off">'
+      +   '<button id="lbSend" type="button">送る</button>'
+      + '</div>'
+      + '<div class="lb-warn">本名は入れないでください。12文字まで。</div>'
+      + '<div class="lb-msg" id="lbMsg"></div>';
+
+    var inp = document.getElementById('lbName');
+    var btn = document.getElementById('lbSend');
+    var msg = document.getElementById('lbMsg');
+
+    btn.addEventListener('click', function(){
+      var nm = (inp.value || '').trim();
+      if (!nm){ msg.textContent = '名前を入れてください'; msg.className = 'lb-msg ng'; inp.focus(); return; }
+      btn.disabled = true;
+      msg.className = 'lb-msg';
+      msg.textContent = '送っています…';
+      fetch(API + '/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ game: game, name: nm, score: score })
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.error){
+          msg.textContent = d.error; msg.className = 'lb-msg ng';
+          btn.disabled = false; return;
+        }
+        myName = d.name;
+        try { localStorage.setItem(KEY, myName); } catch(e){}
+        box.innerHTML = '<div class="lb-t">'
+          + (d.inTop ? d.rank + 'イ' : d.rank + 'イ（20イ マデ ノラナイ）') + '</div>'
+          + listHTML(d.list, 5);
+      }).catch(function(){
+        msg.textContent = '送れませんでした。あとでもう一度。';
+        msg.className = 'lb-msg ng';
+        btn.disabled = false;
+      });
+    });
+
+    inp.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' && !e.isComposing) btn.click();
+    });
+  }
+
+  window.SCOREBOARD = {
+    top: showTop,
+    over: showSubmit,
+    hide: function(){ box.classList.add('hide'); }
+  };
+})();
+</script>
 
 <script>
 (function(){
@@ -1663,6 +1807,7 @@
 
   function showTitle(){
     st = 'title'; reset(); layout(); draw(); hud(); showBest();
+    if (window.SCOREBOARD) SCOREBOARD.top('gyaku-' + stageIdx);
     veilTitle.textContent = '逆ハンドル';
     veilBody.innerHTML =
       '<p><b>' + S().name + '（' + S().sub + '）</b>　' + S().note + '<br>'
@@ -1685,6 +1830,7 @@
   }
 
   function startGame(){
+    if (window.SCOREBOARD) SCOREBOARD.hide();
     audioInit();
     if (actx && actx.state === 'suspended'){ try { actx.resume(); } catch(e){} }
     reset(); layout();
@@ -1704,6 +1850,7 @@
 
   function finish(){
     st = 'over';
+    if (window.SCOREBOARD) SCOREBOARD.over('gyaku-' + stageIdx, Math.round(t * 10) / 10);
     var isNew = !bests[stageIdx] || t < bests[stageIdx];
     if (isNew){ bests[stageIdx] = t; saveBest(); }
     showBest();
