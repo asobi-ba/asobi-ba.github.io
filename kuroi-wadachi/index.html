@@ -552,35 +552,39 @@
     // --- タイヤの鳴き ---
     sqIn = actx.createGain(); sqIn.gain.value = 0;
     noiseSrc.connect(sqIn);
+    // 低いところを落としてから共鳴させる。残すと胴鳴りして「ほえ」になる
+    var sqHp = actx.createBiquadFilter();
+    sqHp.type = 'highpass'; sqHp.frequency.value = 1600; sqHp.Q.value = 0.7;
+    sqIn.connect(sqHp);
 
-    sqTrem = actx.createGain(); sqTrem.gain.value = 0.88;
+    sqTrem = actx.createGain(); sqTrem.gain.value = 0.93;
     sqTrem.connect(seG);
 
-    var Qs = [12, 15, 8], gs = [1.0, 0.75, 0.45];
+    var Qs = [26, 30, 20], gs = [1.0, 0.80, 0.50];
     for (var i = 0; i < 3; i++){
       var bp = actx.createBiquadFilter();
       bp.type = 'bandpass';
       bp.frequency.value = 900;
       bp.Q.value = Qs[i];
       var g = actx.createGain(); g.gain.value = gs[i];
-      sqIn.connect(bp); bp.connect(g); g.connect(sqTrem);
+      sqHp.connect(bp); bp.connect(g); g.connect(sqTrem);
       sqBp.push(bp);
     }
 
     // 周波数のゆらぎ（くっついては滑る のふるえ）
     var lfoF = actx.createOscillator();
     lfoF.type = 'sine'; lfoF.frequency.value = 7.3;
-    var lfoFG = actx.createGain(); lfoFG.gain.value = 55;
+    var lfoFG = actx.createGain(); lfoFG.gain.value = 28;
     lfoF.connect(lfoFG);
     lfoFG.connect(sqBp[0].frequency);
-    var lfoFG2 = actx.createGain(); lfoFG2.gain.value = 82;
+    var lfoFG2 = actx.createGain(); lfoFG2.gain.value = 38;
     lfoF.connect(lfoFG2); lfoFG2.connect(sqBp[1].frequency);
     try { lfoF.start(); } catch(e){}
 
     // 音量のばたつき
     var lfoA = actx.createOscillator();
-    lfoA.type = 'sine'; lfoA.frequency.value = 17.0;
-    var lfoAG = actx.createGain(); lfoAG.gain.value = 0.12;
+    lfoA.type = 'sine'; lfoA.frequency.value = 19.0;
+    var lfoAG = actx.createGain(); lfoAG.gain.value = 0.07;
     lfoA.connect(lfoAG); lfoAG.connect(sqTrem.gain);
     try { lfoA.start(); } catch(e){}
 
@@ -697,13 +701,13 @@
       var want = 0;
       if (run && sliding) want = Math.min(0.85, 0.22 + slip * 1.5) * Math.min(1, sp / 150);
       sqIn.gain.setTargetAtTime(want, t, 0.030);
-      var f0 = 1150 + Math.min(1.0, slip * 2.2) * 1150 + fast * 650;
+      var f0 = 2600 + Math.min(1.0, slip * 2.2) * 1400 + fast * 700;
       sqBp[0].frequency.setTargetAtTime(f0, t, 0.05);
-      sqBp[1].frequency.setTargetAtTime(f0 * 1.48, t, 0.05);
-      sqBp[2].frequency.setTargetAtTime(f0 * 2.15, t, 0.05);
+      sqBp[1].frequency.setTargetAtTime(f0 * 1.19, t, 0.05);
+      sqBp[2].frequency.setTargetAtTime(f0 * 1.41, t, 0.05);
 
       // 路面のうなり：速度だけで決まる
-      roarIn.gain.setTargetAtTime(run ? 0.11 * fast : 0, t, 0.09);
+      roarIn.gain.setTargetAtTime(run ? 0.07 * fast : 0, t, 0.09);
       roarBp.frequency.setTargetAtTime(270 + fast * 190, t, 0.09);
 
       // エンジン
