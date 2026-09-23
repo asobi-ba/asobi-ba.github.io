@@ -383,6 +383,22 @@
     b.getChannelData(0).set(d);
     return b;
   }
+  // ゆらぎ用：でたらめな値をゆっくり動かすだけの波。
+  // きれいな正弦波でゆらすとビブラート＝歌声になるので、乱数で震わせる。
+  function jitData(sr){
+    var hz = 42, n = Math.round(sr * 2.0), d = new Float32Array(n);
+    var step = Math.round(sr / hz), a = Math.random()*2-1, b = Math.random()*2-1, k = 0;
+    for (var i = 0; i < n; i++){
+      var u = k / step;
+      d[i] = a + (b - a) * (u*u*(3-2*u));
+      k++;
+      if (k >= step){ k = 0; a = b; b = Math.random()*2-1; }
+    }
+    var f = Math.round(sr * 0.02);
+    for (var j = 0; j < f; j++){ var g = j / f; d[j] = d[j]*g + d[n-1-j]*(1-g); }
+    return d;
+  }
+
   function kickData(sr){
     var dur = 0.30, n = Math.round(sr * dur), d = new Float32Array(n), ph = 0;
     for (var i = 0; i < n; i++){
@@ -541,7 +557,7 @@
 
   // ---------- 走っている間の音 ----------
   var noiseSrc = null;
-  var sqIn = null, sqBp = [], sqTrem = null;
+  var sqIn = null, sqBp = [], sqTrem = null, sqJit = [];
   var roarIn = null, roarBp = null;
   var engG = null, engO = [], engF = null;
 
@@ -554,13 +570,14 @@
     noiseSrc.connect(sqIn);
     // 低いところを落としてから共鳴させる。残すと胴鳴りして「ほえ」になる
     var sqHp = actx.createBiquadFilter();
-    sqHp.type = 'highpass'; sqHp.frequency.value = 1600; sqHp.Q.value = 0.7;
+    sqHp.type = 'highpass'; sqHp.frequency.value = 2500; sqHp.Q.value = 0.7;
     sqIn.connect(sqHp);
 
-    sqTrem = actx.createGain(); sqTrem.gain.value = 0.93;
+    sqTrem = actx.createGain(); sqTrem.gain.value = 0.90;
     sqTrem.connect(seG);
 
-    var Qs = [26, 30, 20], gs = [1.0, 0.80, 0.50];
+    // Qを上げすぎると雑音でなく音程になる＝歌声に聞こえる。ざらつく程度に留める
+    var Qs = [10, 12, 7], gs = [0.70, 0.52, 0.32];
     for (var i = 0; i < 3; i++){
       var bp = actx.createBiquadFilter();
       bp.type = 'bandpass';
@@ -572,21 +589,21 @@
     }
 
     // 周波数のゆらぎ（くっついては滑る のふるえ）
-    var lfoF = actx.createOscillator();
-    lfoF.type = 'sine'; lfoF.frequency.value = 7.3;
-    var lfoFG = actx.createGain(); lfoFG.gain.value = 28;
-    lfoF.connect(lfoFG);
-    lfoFG.connect(sqBp[0].frequency);
-    var lfoFG2 = actx.createGain(); lfoFG2.gain.value = 38;
-    lfoF.connect(lfoFG2); lfoFG2.connect(sqBp[1].frequency);
-    try { lfoF.start(); } catch(e){}
-
-    // 音量のばたつき
-    var lfoA = actx.createOscillator();
-    lfoA.type = 'sine'; lfoA.frequency.value = 19.0;
-    var lfoAG = actx.createGain(); lfoAG.gain.value = 0.07;
-    lfoA.connect(lfoAG); lfoAG.connect(sqTrem.gain);
-    try { lfoA.start(); } catch(e){}
+    // 正弦波だとビブラートになって歌声に聞こえるので、乱数の波で震わせる
+    function jitter(param, amount, rate, offset){
+      var src = actx.createBufferSource();
+      src.buffer = B.jit; src.loop = true; src.playbackRate.value = rate;
+      var g = actx.createGain(); g.gain.value = amount;
+      src.connect(g); g.connect(param);
+      try { src.start(0, offset); } catch(e){ try { src.start(); } catch(e2){} }
+      return src;
+    }
+    sqJit = [
+      jitter(sqBp[0].frequency, 150, 1.00, 0.00),
+      jitter(sqBp[1].frequency, 190, 1.37, 0.71),
+      jitter(sqBp[2].frequency, 120, 0.83, 1.33),
+      jitter(sqTrem.gain,      0.10, 1.61, 0.43)
+    ];
 
     // --- 路面を転がるうなり ---
     roarIn = actx.createGain(); roarIn.gain.value = 0;
@@ -630,6 +647,7 @@
     B.hatO  = buf(hatData(sr, true));
     B.crash = buf(crashData(sr));
     B.noise = buf(noiseData(sr));
+    B.jit   = buf(jitData(sr));
     B.hit   = buf(hitData(sr));
     makeLive();
     ready = true;
@@ -701,10 +719,10 @@
       var want = 0;
       if (run && sliding) want = Math.min(0.85, 0.22 + slip * 1.5) * Math.min(1, sp / 150);
       sqIn.gain.setTargetAtTime(want, t, 0.030);
-      var f0 = 2600 + Math.min(1.0, slip * 2.2) * 1400 + fast * 700;
+      var f0 = 3900 + Math.min(1.0, slip * 2.2) * 1500 + fast * 900;
       sqBp[0].frequency.setTargetAtTime(f0, t, 0.05);
-      sqBp[1].frequency.setTargetAtTime(f0 * 1.19, t, 0.05);
-      sqBp[2].frequency.setTargetAtTime(f0 * 1.41, t, 0.05);
+      sqBp[1].frequency.setTargetAtTime(f0 * 1.23, t, 0.05);
+      sqBp[2].frequency.setTargetAtTime(f0 * 1.52, t, 0.05);
 
       // 路面のうなり：速度だけで決まる
       roarIn.gain.setTargetAtTime(run ? 0.07 * fast : 0, t, 0.09);
