@@ -211,6 +211,26 @@
   .go:hover{background:var(--amber-hi)}
   .go:focus-visible{outline:2px solid var(--cool);outline-offset:3px}
 
+  .vol{
+    position:fixed;left:10px;bottom:10px;z-index:55;
+    display:flex;align-items:center;gap:6px;
+    font-family:'Oxanium',monospace;font-size:9px;letter-spacing:.14em;
+    color:var(--cool);background:rgba(11,12,16,.55);
+    border:1px solid rgba(196,192,182,.22);border-radius:3px;padding:5px 8px;
+  }
+  .vol input{
+    -webkit-appearance:none;appearance:none;width:74px;height:3px;
+    background:rgba(196,192,182,.3);border-radius:2px;outline:none;cursor:pointer;
+  }
+  .vol input::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:50%;
+    background:var(--amber);border:none;cursor:pointer;
+  }
+  .vol input::-moz-range-thumb{
+    width:12px;height:12px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;
+  }
+  .vol input:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+
   .legend{
     flex:0 0 auto;width:100%;max-width:520px;
     border-top:1px solid var(--line);padding-top:7px;
@@ -264,6 +284,8 @@
     </div>
   </div>
 
+  <div class="vol"><span>SOUND</span><input id="volSl" type="range" min="0" max="100" step="5" value="50" aria-label="音量"></div>
+
   <div class="legend">
     <span>← → / A D でハンドル</span>
     <span>スマホは画面の左半分・右半分をおす</span>
@@ -271,6 +293,366 @@
     <span>P＝やすみ</span>
   </div>
 </div>
+
+<script>
+// ===== 黒い轍の音（ユーロビート）=====
+// 音源ファイルは使わず、波形をその場で作る。
+//   BGM  … 158拍/分、イ短調。四つ打ち・裏拍のオープンハイハット・
+//           16分で転がるベース・ノコギリ波の主旋律という、ユーロビートの型。
+//   効果音 … タイヤの滑り（滑り具合で音量が変わる）、接触、カウントダウン、
+//           ゴール、記録更新、エンジン。
+(function(){
+  var actx = null, master = null, musicG = null, seG = null;
+  var vol = 0.5, ready = false;
+
+  // ---------- 曲の設計 ----------
+  var BPM = 158;
+  var SPB = 60 / BPM;          // 1拍
+  var STP = SPB / 4;           // 16分音符
+  var BARS = 8;
+  var STEPS = BARS * 16;
+
+  // 和音の進行（イ短調）: Am F C G Am F C E
+  var ROOT = [110.00, 87.31, 130.81, 98.00, 110.00, 87.31, 130.81, 82.41];
+  var TRIAD = [
+    [220.00, 261.63, 329.63],   // Am
+    [174.61, 220.00, 261.63],   // F
+    [261.63, 329.63, 392.00],   // C
+    [196.00, 246.94, 293.66],   // G
+    [220.00, 261.63, 329.63],   // Am
+    [174.61, 220.00, 261.63],   // F
+    [261.63, 329.63, 392.00],   // C
+    [164.81, 207.65, 246.94]    // E
+  ];
+
+  // 主旋律（イ短調の音度。-1 は休み。A3=220 を 0 とする半音）
+  var A3 = 220.0;
+  var M1 = [12,-1,10,-1, 7,-1,10,-1, 12,-1,-1,15, 14,-1,12,-1];
+  var M2 = [ 8,-1, 7,-1, 5,-1, 7,-1,  8,-1,-1,12, 10,-1, 8,-1];
+  var M3 = [ 7,-1, 5,-1, 3,-1, 5,-1,  7,-1,-1,10, 12,-1,10,-1];
+  var M4 = [10,-1,12,-1,14,-1,12,-1, 10,-1,-1, 7,  5,-1, 7,-1];
+  var M8 = [ 7,-1, 8,-1,10,-1,12,-1, 14,-1,-1,-1, 11,-1, 7,-1];
+  var LEAD = [M1, M2, M3, M4, M1, M2, M3, M8];
+
+  // ベース（各小節の根音に対する半音。16分で転がす）
+  var BASS = [0,0,12,0, 0,0,12,0, 0,0,12,0, 0,12,0,12];
+
+  function semi(base, n){ return base * Math.pow(2, n / 12); }
+
+  // ---------- 波形をつくる ----------
+  function norm(d, pk){
+    var m = 0;
+    for (var i = 0; i < d.length; i++){ var v = Math.abs(d[i]); if (v > m) m = v; }
+    if (m > 0){ var sc = pk / m; for (var j = 0; j < d.length; j++) d[j] *= sc; }
+    return d;
+  }
+  function buf(d){
+    var b = actx.createBuffer(1, d.length, actx.sampleRate);
+    b.getChannelData(0).set(d);
+    return b;
+  }
+
+  // バスドラム：120Hz から 45Hz へ落ちる正弦波＋立ち上がりの当たり
+  function kickData(sr){
+    var dur = 0.30, n = Math.round(sr * dur), d = new Float32Array(n), ph = 0;
+    for (var i = 0; i < n; i++){
+      var t = i / sr;
+      var f = 45 + 78 * Math.exp(-t / 0.028);
+      ph += 2 * Math.PI * f / sr;
+      var e = Math.exp(-t / 0.085);
+      d[i] = Math.sin(ph) * e + (Math.random()*2-1) * Math.exp(-t / 0.004) * 0.35;
+    }
+    return norm(d, 0.95);
+  }
+  // クラップ：短い雑音を3回はじいて、余韻を付ける
+  function clapData(sr){
+    var dur = 0.26, n = Math.round(sr * dur), d = new Float32Array(n);
+    var hits = [0, 0.011, 0.023];
+    var y = 0;
+    for (var i = 0; i < n; i++){
+      var t = i / sr, a = 0;
+      for (var h = 0; h < hits.length; h++){
+        if (t >= hits[h]) a += Math.exp(-(t - hits[h]) / 0.012);
+      }
+      a += Math.exp(-t / 0.10) * 0.55;             // 余韻
+      y += 0.55 * ((Math.random()*2-1) - y);       // 少し丸めた雑音
+      d[i] = y * a;
+    }
+    return norm(d, 0.9);
+  }
+  // ハイハット：高い雑音。open=true で余韻を長く
+  function hatData(sr, open){
+    var dur = open ? 0.24 : 0.055, n = Math.round(sr * dur), d = new Float32Array(n);
+    var prev = 0;
+    for (var i = 0; i < n; i++){
+      var t = i / sr;
+      var w = Math.random()*2-1;
+      var hp = w - prev; prev = w;                 // 単純な高域通過
+      d[i] = hp * Math.exp(-t / (open ? 0.075 : 0.012));
+    }
+    return norm(d, 0.75);
+  }
+  // クラッシュ：曲の頭で鳴らす
+  function crashData(sr){
+    var dur = 1.1, n = Math.round(sr * dur), d = new Float32Array(n), prev = 0;
+    for (var i = 0; i < n; i++){
+      var t = i / sr, w = Math.random()*2-1;
+      var hp = w - prev * 0.6; prev = w;
+      d[i] = hp * Math.exp(-t / 0.35) * Math.min(1, t / 0.004);
+    }
+    return norm(d, 0.7);
+  }
+  // タイヤの滑り：ずっと鳴らしておく雑音の輪
+  function skidData(sr){
+    var n = Math.round(sr * 1.0), d = new Float32Array(n), y1 = 0, y2 = 0;
+    for (var i = 0; i < n; i++){
+      var w = Math.random()*2-1;
+      y1 += 0.28 * (w - y1);                        // 低いほうを削る
+      y2 += 0.62 * (y1 - y2);
+      d[i] = (y1 - y2) * 3.2;
+    }
+    // つなぎ目をなめらかに
+    var f = Math.round(sr * 0.01);
+    for (var k = 0; k < f; k++){
+      var g = k / f;
+      d[k] = d[k] * g + d[n-1-k] * (1-g);
+    }
+    return norm(d, 0.8);
+  }
+  // 接触：低い衝撃＋こすれ
+  function hitData(sr){
+    var dur = 0.35, n = Math.round(sr * dur), d = new Float32Array(n), y = 0;
+    for (var i = 0; i < n; i++){
+      var t = i / sr, e = Math.exp(-t / 0.06);
+      y += 0.2 * ((Math.random()*2-1) - y);
+      d[i] = (y * 0.8 + Math.sin(2*Math.PI*84*t) * 0.5 + Math.sin(2*Math.PI*140*t) * 0.22) * e;
+    }
+    return norm(d, 0.92);
+  }
+
+  var B = {};
+
+  // ---------- 音を出す道具 ----------
+  function hit(b, gain, rate, bus){
+    if (!actx || !b) return;
+    var s = actx.createBufferSource();
+    s.buffer = b;
+    if (rate) s.playbackRate.value = rate;
+    var g = actx.createGain();
+    g.gain.value = gain;
+    s.connect(g); g.connect(bus || musicG);
+    try { s.start(); } catch(e){}
+  }
+  // ノコギリ波を1音
+  function saw(freq, t, dur, gain, cut, detune, bus){
+    if (!actx) return;
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.006);
+    g.gain.setValueAtTime(gain, t + dur * 0.6);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    var f = actx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = cut; f.Q.value = 1.0;
+    g.connect(f); f.connect(bus || musicG);
+    var ds = detune ? [-detune, detune] : [0];
+    for (var i = 0; i < ds.length; i++){
+      var o = actx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = freq;
+      o.detune.value = ds[i];
+      o.connect(g);
+      try { o.start(t); o.stop(t + dur + 0.02); } catch(e){}
+    }
+  }
+
+  // ---------- 曲の進行 ----------
+  var playing = false, nextStep = 0, nextTime = 0;
+
+  function schedule(s, t){
+    var bar = Math.floor(s / 16), k = s % 16;
+    var root = ROOT[bar];
+
+    if (k % 4 === 0) hit(B.kick, 0.85, 1, musicG);                 // 四つ打ち
+    if (k === 4 || k === 12) hit(B.clap, 0.55, 1, musicG);         // 2拍目・4拍目
+    if (k % 2 === 0) hit(B.hat, 0.26, 1, musicG);                  // 8分の刻み
+    if (k % 4 === 2) hit(B.hatO, 0.22, 1, musicG);                 // 裏拍の open
+    if (s === 0) hit(B.crash, 0.35, 1, musicG);
+
+    var bn = BASS[k];
+    if (bn >= 0) saw(semi(root, bn), t, STP * 0.85, 0.30, 900, 0, musicG);
+
+    var ln = LEAD[bar][k];
+    if (ln >= 0) saw(semi(A3, ln), t, STP * 1.7, 0.16, 3200, 9, musicG);
+
+    if (k === 0){                                                   // 和音の当て
+      var c = TRIAD[bar];
+      for (var i = 0; i < 3; i++) saw(c[i], t, SPB * 0.42, 0.055, 2400, 6, musicG);
+    }
+  }
+
+  function pump(){
+    if (!playing || !actx) return;
+    var ahead = actx.currentTime + 0.20;
+    var guard = 0;
+    while (nextTime < ahead && guard++ < 200){
+      schedule(nextStep % STEPS, nextTime);
+      nextStep++;
+      nextTime += STP;
+    }
+  }
+
+  // ---------- 効果音 ----------
+  function beep(freq, dur, gain){
+    if (!actx) return;
+    var t = actx.currentTime;
+    var o = actx.createOscillator();
+    o.type = 'square'; o.frequency.value = freq;
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.006);
+    g.gain.setValueAtTime(gain, t + dur * 0.7);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    o.connect(g); g.connect(seG);
+    try { o.start(t); o.stop(t + dur + 0.02); } catch(e){}
+  }
+  function arp(list, step, dur, gain){
+    if (!actx) return;
+    var t0 = actx.currentTime;
+    for (var i = 0; i < list.length; i++){
+      saw(list[i], t0 + i * step, dur, gain, 3600, 8, seG);
+    }
+  }
+
+  // ---------- 走っている間の音 ----------
+  var skidSrc = null, skidG = null, skidF = null;
+  var engG = null, engO = [], engF = null;
+
+  function makeLive(){
+    // タイヤの滑り
+    skidG = actx.createGain(); skidG.gain.value = 0;
+    skidF = actx.createBiquadFilter();
+    skidF.type = 'bandpass'; skidF.frequency.value = 2300; skidF.Q.value = 1.1;
+    skidG.connect(skidF); skidF.connect(seG);
+    skidSrc = actx.createBufferSource();
+    skidSrc.buffer = B.skid; skidSrc.loop = true;
+    skidSrc.connect(skidG);
+    try { skidSrc.start(); } catch(e){}
+
+    // エンジン（低く、控えめに）
+    engG = actx.createGain(); engG.gain.value = 0;
+    engF = actx.createBiquadFilter();
+    engF.type = 'lowpass'; engF.frequency.value = 620; engF.Q.value = 0.8;
+    engG.connect(engF); engF.connect(seG);
+    for (var i = 0; i < 2; i++){
+      var o = actx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = 70;
+      o.detune.value = i ? 11 : -11;
+      o.connect(engG);
+      try { o.start(); } catch(e){}
+      engO.push(o);
+    }
+  }
+
+  // ---------- 外から呼ぶもの ----------
+  function init(){
+    if (actx) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { actx = new AC(); } catch(e){ actx = null; return; }
+    master = actx.createGain(); master.gain.value = vol * 0.55;   // 重なっても割れない余裕
+    master.connect(actx.destination);
+    musicG = actx.createGain(); musicG.gain.value = 0.42; musicG.connect(master);
+    seG = actx.createGain(); seG.gain.value = 0.5; seG.connect(master);
+
+    var sr = actx.sampleRate;
+    B.kick  = buf(kickData(sr));
+    B.clap  = buf(clapData(sr));
+    B.hat   = buf(hatData(sr, false));
+    B.hatO  = buf(hatData(sr, true));
+    B.crash = buf(crashData(sr));
+    B.skid  = buf(skidData(sr));
+    B.hit   = buf(hitData(sr));
+    makeLive();
+    ready = true;
+  }
+
+  var lastCount = 99;
+
+  window.WADACHI_AUDIO = {
+    init: function(){
+      init();
+      if (actx && actx.state === 'suspended'){ try { actx.resume(); } catch(e){} }
+    },
+    start: function(){
+      this.init();
+      if (!ready) return;
+      playing = true;
+      nextStep = 0;
+      nextTime = actx.currentTime + 0.08;
+      lastCount = 99;
+      musicG.gain.setTargetAtTime(0.42, actx.currentTime, 0.05);
+    },
+    stop: function(){
+      if (!ready) return;
+      playing = false;
+      musicG.gain.setTargetAtTime(0, actx.currentTime, 0.08);
+      if (skidG) skidG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      if (engG) engG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+    },
+    pause: function(on){
+      if (!ready) return;
+      musicG.gain.setTargetAtTime(on ? 0 : 0.42, actx.currentTime, 0.06);
+      if (on){
+        if (skidG) skidG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
+        if (engG) engG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
+      }
+    },
+    count: function(n){
+      if (!ready || n === lastCount) return;
+      lastCount = n;
+      if (n > 0) beep(880, 0.10, 0.5);
+      else beep(1320, 0.30, 0.55);
+    },
+    hitWall: function(){ if (ready) hit(B.hit, 0.6, 0.9 + Math.random()*0.25, seG); },
+    goal: function(isNew){
+      if (!ready) return;
+      if (isNew) arp([440, 554.37, 659.25, 880, 1108.73], 0.075, 0.32, 0.14);
+      else arp([440, 523.25, 659.25], 0.085, 0.30, 0.13);
+    },
+    fail: function(){
+      if (!ready) return;
+      arp([330, 277.18, 220], 0.10, 0.34, 0.13);
+    },
+    // 毎こま。走っている状態を渡す
+    tick: function(st, sliding, slip, sp){
+      if (!ready) return;
+      pump();
+      var t = actx.currentTime;
+      var run = (st === 'play');
+      var want = 0;
+      if (run && sliding) want = Math.min(0.5, 0.10 + slip * 0.9) * Math.min(1, sp / 180);
+      skidG.gain.setTargetAtTime(want, t, 0.035);
+      skidF.frequency.setTargetAtTime(1700 + Math.min(1, sp / 260) * 1500, t, 0.08);
+      var ef = 62 + Math.min(1, sp / 300) * 95;
+      for (var i = 0; i < engO.length; i++) engO[i].frequency.setTargetAtTime(ef, t, 0.06);
+      engG.gain.setTargetAtTime(run ? 0.10 : 0, t, 0.08);
+    },
+    setVol: function(v){
+      vol = Math.max(0, Math.min(1, v));
+      if (master) master.gain.value = vol * 0.55;
+      try { localStorage.setItem('wadachi.vol', String(Math.round(vol * 100))); } catch(e){}
+    },
+    getVol: function(){
+      try {
+        var s = localStorage.getItem('wadachi.vol');
+        if (s !== null) vol = Math.max(0, Math.min(1, parseInt(s, 10) / 100));
+      } catch(e){}
+      return vol;
+    }
+  };
+})();
+</script>
 
 <script>
 // ===== 順位表（みんなで共有）=====
@@ -544,6 +926,7 @@
   var idx = 0, time = 0, best = 0, countT = 0;
   var score = 0, pending = 0, mult = 1, driftT = 0, idleT = 0, sliding = false;
   var marks = [], smoke = [], lastWheels = null, hitT = 0, stuckT = 0, holdT = 0, steerV = 0;
+  var lastSlip = 0;                      // 音に渡す用
 
   var bests = [0,0,0];
   function loadBest(){
@@ -567,9 +950,12 @@
     score = 0; pending = 0; mult = 1; driftT = 0; idleT = 0; sliding = false;
     marks.length = 0; smoke.length = 0; lastWheels = null; hitT = 0; stuckT = 0; holdT = 0; steerV = 0;
   }
-  function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide(); reset(); st = 'count'; countT = 3.2; countEl.classList.remove('off'); veil.classList.add('off'); lastT = 0; }
+  function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.start();
+    reset(); st = 'count'; countT = 3.2; countEl.classList.remove('off'); veil.classList.add('off'); lastT = 0; }
   function showTitle(){
     st = 'title'; reset();
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
     if (window.SCOREBOARD) SCOREBOARD.top('wadachi-' + (courseIdx + 1));
     var c = COURSES[courseIdx];
     veilTitle.textContent = 'TOUGE TIME ATTACK';
@@ -584,6 +970,7 @@
     st = 'done';
     bank();
     if (miss > 0) {                       // 通過点を飛ばしている＝ショートカット
+      if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.fail(); }
       veilTitle.textContent = 'SHORTCUT';
       veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
         '<span class="big">' + fmt(time) + '</span><br>' +
@@ -596,6 +983,7 @@
     if (window.SCOREBOARD) SCOREBOARD.over('wadachi-' + (courseIdx + 1), time);
     var isNew = (best === 0 || time < best);
     if (isNew) { best = time; saveBest(); }
+    if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(isNew); }
     veilTitle.textContent = 'GOAL';
     veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
       '<span class="big">' + fmt(time) + '</span><br>' +
@@ -606,6 +994,7 @@
     countEl.classList.add('off');
   }
   function setPause(on){
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.pause(on);
     if (on) { st = 'pause'; veilTitle.textContent = 'PAUSE'; veilBody.innerHTML = 'ひとやすみ'; goBtn.textContent = 'つづける'; veil.classList.remove('off'); }
     else { st = 'play'; veil.classList.add('off'); lastT = 0; }
   }
@@ -624,6 +1013,11 @@
     if (b && b !== tabsEl) setCourse(parseInt(b.getAttribute('data-c'), 10));
   });
 
+  var volSl = document.getElementById('volSl');
+  if (volSl && window.WADACHI_AUDIO){
+    volSl.value = Math.round(WADACHI_AUDIO.getVol() * 100);
+    volSl.addEventListener('input', function(){ WADACHI_AUDIO.setVol(volSl.value / 100); });
+  }
   goBtn.addEventListener('click', function(){ if (st === 'pause') setPause(false); else startGame(); });
 
   // ---------- そうさ（左右だけ） ----------
@@ -671,6 +1065,7 @@
   function step(dt){
     if (st === 'count') {
       countT -= dt;
+      if (window.WADACHI_AUDIO) WADACHI_AUDIO.count(Math.max(0, Math.ceil(countT - 0.2)));
       if (countT <= 0) { st = 'play'; countEl.classList.add('off'); }
       return;
     }
@@ -728,6 +1123,7 @@
       if (vn * sgn > 0) { car.vx -= sN.nx * vn; car.vy -= sN.ny * vn; }
       car.vx *= 0.72; car.vy *= 0.72;
       hitT = 0.35;
+      if (window.WADACHI_AUDIO) WADACHI_AUDIO.hitWall();
       pending = 0; mult = 1; driftT = 0;
       for (var i=0;i<8;i++) smoke.push({ x:car.x, y:car.y, r:4+Math.random()*7, life:1 });
     }
@@ -745,6 +1141,7 @@
     // 滑り具合
     sp = Math.hypot(car.vx, car.vy);
     var slip = Math.abs(Math.atan2(lat, Math.max(18, fwd)));
+    lastSlip = slip;
     sliding = (slip > 0.18 && sp > 80 && onRoad);
 
     if (sliding) {
@@ -946,6 +1343,7 @@
     if (!lastT) { lastT = now; return; }
     var dt = Math.min(0.05, (now - lastT)/1000);
     lastT = now;
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.tick(st, sliding, lastSlip, sp);
     if (st !== 'pause') {
       acc += dt;
       var g = 0;
