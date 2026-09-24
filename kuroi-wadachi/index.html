@@ -1526,9 +1526,20 @@
     // 前へ
     fwd += ACCEL * dt;
     fwd -= fwd * (onRoad ? 0.16 : 1.1) * dt;
-    fwd -= Math.abs(lat) * SCRUB * dt;         // 滑るとスピードが落ちる＝これが唯一の減速
     if (fwd > MAXS) fwd = MAXS;
+    // 滑ったぶんの減速＝これが唯一の減速。
+    // 前向きの速度からだけ引くと、真横を向いた（前向きが0の）ときに減速が
+    // 効かなくなり、勢いを保ったまま向きだけ戻って かえって速くなる。
+    // 前向きで引ききれないぶんは、横向きの勢いから削る。
+    var loss = Math.abs(lat) * SCRUB * dt;
+    var take = Math.min(Math.max(0, fwd), loss);
+    fwd -= take;
     if (fwd < 0) fwd = 0;
+    var rest = loss - take;
+    if (rest > 0){
+      var cut = Math.min(Math.abs(lat), rest);
+      lat -= (lat > 0 ? cut : -cut);
+    }
 
     // 横のグリップ
     // タイヤの踏ん張りは PEAK でいちばん強く、そこを越えると落ちていく。
