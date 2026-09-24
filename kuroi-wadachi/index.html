@@ -218,6 +218,7 @@
     color:var(--cool);background:rgba(11,12,16,.55);
     border:1px solid rgba(196,192,182,.22);border-radius:3px;padding:5px 8px;
   }
+  .veil .gh{ color:var(--cool);font-size:11px;letter-spacing:.04em; }
   .ghb{
     -webkit-appearance:none;appearance:none;cursor:pointer;
     font-family:'Oxanium',monospace;font-size:9px;letter-spacing:.14em;
@@ -298,6 +299,7 @@
     <span>スマホは画面の左半分・右半分をおす</span>
     <span>Space＝スタート／やり直し</span>
     <span>P＝やすみ</span>
+    <span>G＝ゴースト</span>
   </div>
 </div>
 
@@ -571,6 +573,7 @@
   var roarIn = null, roarBp = null;
   var engG = null, engO = [], engF = null, engMul = [];
   var engNz = null, engNzF = null, engLow = null;
+  var engNzMod = null, engPulse = null, engMid = null;
   var engLoad = 0, engPrevSp = 0;
   // 変速機のつもり。速度のこの割合で次の段に入る（回転が落ちてまた上がる）
   var GEARS = [0, 0.15, 0.29, 0.46, 0.68];
@@ -677,7 +680,11 @@
     // 低いところを持ち上げて野太くする
     engLow = actx.createBiquadFilter();
     engLow.type = 'lowshelf'; engLow.frequency.value = 190; engLow.gain.value = 2.5;
-    engG.connect(engF); engF.connect(engLow); engLow.connect(seG);
+    // 排気の共鳴。位置を動かさないので掃引（ワウ）には聞こえない
+    engMid = actx.createBiquadFilter();
+    engMid.type = 'peaking'; engMid.frequency.value = 820; engMid.Q.value = 1.0;
+    engMid.gain.value = 5.5;
+    engG.connect(engF); engF.connect(engLow); engLow.connect(engMid); engMid.connect(seG);
     // 基音だけだと薄い。下の胴鳴り・排気の歯切れ・上の倍音を重ねて厚みを出す
     var wMain = pulseWave(18, -0.80);   // 主な爆発
     var wUp   = pulseWave(8,  -0.70);   // 上の鳴き
@@ -701,12 +708,24 @@
       try { o.start(); } catch(e){}
       engO.push(o); engMul.push(PARTS[j].mul);
     }
-    // 排気のざらつき
+    // 排気のざらつき。ただ流すだけだと「サー」で終わるので、
+    // 爆発に合わせて脈打たせる。完全に同じ波が繰り返されると電子音に聞こえる。
     engNz = actx.createGain(); engNz.gain.value = 0;
     noiseSrc.connect(engNz);
+    engNzMod = actx.createGain(); engNzMod.gain.value = 0.48;
+    engPulse = actx.createOscillator();
+    if (wMain) { try { engPulse.setPeriodicWave(wMain); } catch(e){ engPulse.type = 'sawtooth'; } }
+    else engPulse.type = 'sawtooth';
+    engPulse.frequency.value = 70;
+    var pmG = actx.createGain(); pmG.gain.value = 0.52;
+    engPulse.connect(pmG); pmG.connect(engNzMod.gain);
+    try { engPulse.start(); } catch(e){}
     engNzF = actx.createBiquadFilter();
-    engNzF.type = 'bandpass'; engNzF.frequency.value = 1200; engNzF.Q.value = 1.6;
-    engNz.connect(engNzF); engNzF.connect(seG);
+    engNzF.type = 'bandpass'; engNzF.frequency.value = 1200; engNzF.Q.value = 1.1;
+    engNz.connect(engNzMod); engNzMod.connect(engNzF); engNzF.connect(seG);
+    // 一発ごとのばらつき。ここが無いと判で押したような繰り返しになる
+    jitter(engNzMod.gain, 0.16, 3.7, 0.27);
+    for (var e2 = 0; e2 < engO.length; e2++) jitter(engO[e2].detune, 11, 2.9 + e2 * 0.31, e2 * 0.4);
     // 過給機の鳴きは入れない（掃引する正弦波は「ビヨー」に聞こえる）
   }
 
@@ -853,9 +872,10 @@
       for (var i = 0; i < engO.length; i++)
         engO[i].frequency.setTargetAtTime(ef * engMul[i], t, 0.05);
       engF.frequency.setTargetAtTime(380 + rev * 2400 + engLoad * 900, t, 0.07);
-      engG.gain.setTargetAtTime(run ? (0.140 + engLoad * 0.124 + rev * 0.074) : 0, t, 0.08);
-      engNz.gain.setTargetAtTime(run ? (0.018 + engLoad * 0.040) : 0, t, 0.08);
-      engNzF.frequency.setTargetAtTime(950 + rev * 2100, t, 0.07);
+      engG.gain.setTargetAtTime(run ? (0.091 + engLoad * 0.081 + rev * 0.048) : 0, t, 0.08);
+      engPulse.frequency.setTargetAtTime(ef, t, 0.05);
+      engNz.gain.setTargetAtTime(run ? (0.26 + engLoad * 0.42) : 0, t, 0.08);
+      engNzF.frequency.setTargetAtTime(820 + rev * 1900, t, 0.07);
 
     },
     setVol: function(v){
@@ -1153,6 +1173,7 @@
   var rec = [];                        // いま走っている記録 x,y,向き,通過点
   var ghost = null;                    // 手本にする記録
   var ghosts = [null,null,null];
+  var ghostT = [0,0,0];                // その手本を出したときのタイム
   var ghostOn = true;
   var GCOL = { body:'#5FD3E0', lampCore:'#CFEFF5' };
 
@@ -1162,14 +1183,18 @@
         var v = localStorage.getItem('wadachi.ghost.' + i);
         ghosts[i] = v ? JSON.parse(v) : null;
         if (ghosts[i] && (!ghosts[i].length || ghosts[i].length % 4)) ghosts[i] = null;
-      } catch(e){ ghosts[i] = null; }
+        ghostT[i] = parseFloat(localStorage.getItem('wadachi.ghostT.' + i)) || 0;
+      } catch(e){ ghosts[i] = null; ghostT[i] = 0; }
     }
     try { ghostOn = localStorage.getItem('wadachi.ghostOn') !== '0'; } catch(e){}
   }
-  function saveGhost(){
+  function saveGhost(t){
     ghosts[courseIdx] = rec.slice();
-    try { localStorage.setItem('wadachi.ghost.' + courseIdx, JSON.stringify(ghosts[courseIdx])); }
-    catch(e){}                         // 入りきらなくても走行そのものは止めない
+    ghostT[courseIdx] = Math.round(t * 1000) / 1000;
+    try {
+      localStorage.setItem('wadachi.ghost.' + courseIdx, JSON.stringify(ghosts[courseIdx]));
+      localStorage.setItem('wadachi.ghostT.' + courseIdx, String(ghostT[courseIdx]));
+    } catch(e){}                       // 入りきらなくても走行そのものは止めない
   }
   // 手本の t 秒時点の姿。終わっていれば null
   function ghostPose(t){
@@ -1236,7 +1261,8 @@
     veilTitle.textContent = 'TOUGE TIME ATTACK';
     veilBody.innerHTML = '<span class="course">' + c.name + '　<em>' + c.tag + '　全長 ' + Math.round(TRACKLEN) + '</em></span><br>' +
       '左右だけ。アクセルは自動、ブレーキは無い。<br>' +
-      'ヘアピンは曲がりきれない。<br><b>滑らせて速度を落とす</b>のが唯一の減速。';
+      'ヘアピンは曲がりきれない。<br><b>滑らせて速度を落とす</b>のが唯一の減速。<br>' +
+      '<span class="gh">' + ghostLine() + '</span>';
     goBtn.textContent = 'スタート';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1257,7 +1283,10 @@
     }
     if (window.SCOREBOARD) SCOREBOARD.over('wadachi-' + (courseIdx + 1), time);
     var isNew = (best === 0 || time < best);
-    if (isNew) { best = time; saveBest(); saveGhost(); ghost = ghosts[courseIdx]; }
+    if (isNew) { best = time; saveBest(); }
+    // 手本がまだ無ければ、ベスト更新でなくてもこの1本を手本にする。
+    // そうしないと、すでにベストを持っている人には永久にゴーストが出ない。
+    if (isNew || !ghosts[courseIdx]) { saveGhost(time); ghost = ghosts[courseIdx]; }
     if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(isNew); }
     veilTitle.textContent = 'GOAL';
     veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
@@ -1296,13 +1325,13 @@
     ghBtn.setAttribute('aria-pressed', ghostOn ? 'true' : 'false');
     ghBtn.title = ghostOn ? '自己ベストの走りを並走させる（入）' : 'ゴースト（切）';
   }
-  if (ghBtn){
-    ghBtn.addEventListener('click', function(){
-      ghostOn = !ghostOn;
-      try { localStorage.setItem('wadachi.ghostOn', ghostOn ? '1' : '0'); } catch(e){}
-      syncGh();
-    });
+  function toggleGh(){
+    ghostOn = !ghostOn;
+    try { localStorage.setItem('wadachi.ghostOn', ghostOn ? '1' : '0'); } catch(e){}
+    syncGh();
+    if (st === 'title' || st === 'done') showTitle2();
   }
+  if (ghBtn) ghBtn.addEventListener('click', toggleGh);
 
   var volSl = document.getElementById('volSl');
   if (volSl && window.WADACHI_AUDIO){
@@ -1322,6 +1351,7 @@
       else if (st === 'pause') setPause(false);
     }
     if (k === 'p' || k === 'P') { if (st === 'play') setPause(true); else if (st === 'pause') setPause(false); }
+    if (k === 'g' || k === 'G') toggleGh();
   });
   window.addEventListener('keyup', function(e){ keys[e.key] = false; });
   window.addEventListener('blur', function(){ keys = {}; touchDir = 0; });
@@ -1561,6 +1591,16 @@
     drawGhost();
     drawCar();
     drawGhostGap();
+  }
+
+  function showTitle2(){
+    var e = veilBody.getElementsByClassName('gh')[0];
+    if (e) e.textContent = ghostLine();
+  }
+  function ghostLine(){
+    if (!ghosts[courseIdx]) return 'ゴースト：まだ記録なし（1本 完走すると記録されます）';
+    var t = ghostT[courseIdx] ? ' ' + fmt(ghostT[courseIdx]) : '';
+    return 'ゴースト：' + (ghostOn ? '入' : '切') + t + '　（画面下の GHOST／G キーで切替）';
   }
 
   function drawGhost(){
@@ -1871,7 +1911,7 @@ function shade(hex, k){
 
   function boot(saved){
     loadBest();
-  syncGh();
+    syncGh();
     if (saved && saved.best && (!best || saved.best < best)) { best = saved.best; saveBest(); }
     layout();
     setCourse(0);
