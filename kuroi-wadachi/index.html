@@ -559,22 +559,24 @@
   var noiseSrc = null;
   var sqIn = null, sqBp = [], sqTrem = null, sqJit = [];
   var scrIn = null, scrBp = null;              // 路面をこするゴムの音
+  var thIn = null, thBp = null;                // 車重の低い唸り
   var buzzO = null, buzzG = null, buzzBp = null, buzzTrem = null;  // ゴムのびびり
   var roarIn = null, roarBp = null;
   var engG = null, engO = [], engF = null, engMul = [];
-  var engNz = null, engNzF = null, engWh = null, engWhG = null;
+  var engNz = null, engNzF = null, engLow = null;
   var engLoad = 0, engPrevSp = 0;
   // 変速機のつもり。速度のこの割合で次の段に入る（回転が落ちてまた上がる）
   var GEARS = [0, 0.15, 0.29, 0.46, 0.68];
 
   // 燃焼の一発ぶんの波。倍音を並べて、位相をずらして山を作る。
   // ノコギリ波のままだと滑らかにつながって電子音になる。
+  // 位相を揃えると各周期に山がひとつ立つ＝一発の爆発になる。
+  // 位相をばらすと山がほどけて「ビヨー」と鳴る（ゴムっぽく聞こえる）。
   function pulseWave(n, roll){
     var re = new Float32Array(n + 1), im = new Float32Array(n + 1);
     for (var i = 1; i <= n; i++){
-      var a = Math.pow(i, roll) * (0.72 + Math.random() * 0.56);
-      var ph = Math.random() * Math.PI * 2;
-      re[i] = a * Math.cos(ph); im[i] = a * Math.sin(ph);
+      re[i] = Math.pow(i, roll) * (0.90 + Math.random() * 0.20);
+      im[i] = 0;
     }
     try { return actx.createPeriodicWave(re, im); } catch(e){ return null; }
   }
@@ -623,7 +625,7 @@
       jitter(sqBp[0].frequency, 150, 1.00, 0.00),
       jitter(sqBp[1].frequency, 190, 1.37, 0.71),
       jitter(sqBp[2].frequency, 120, 0.83, 1.33),
-      jitter(sqTrem.gain,      0.45, 3.20, 0.43)
+      jitter(sqTrem.gain,      0.45, 2.30, 0.43)
     ];
 
     // --- ゴムが路面をこする低い音 ---
@@ -632,6 +634,13 @@
     scrBp = actx.createBiquadFilter();
     scrBp.type = 'bandpass'; scrBp.frequency.value = 380; scrBp.Q.value = 0.9;
     scrIn.connect(scrBp); scrBp.connect(sqTrem);
+
+    // --- 車重がタイヤを押しつける低い唸り ---
+    thIn = actx.createGain(); thIn.gain.value = 0;
+    noiseSrc.connect(thIn);
+    thBp = actx.createBiquadFilter();
+    thBp.type = 'bandpass'; thBp.frequency.value = 105; thBp.Q.value = 2.2;
+    thIn.connect(thBp); thBp.connect(seG);
 
     // --- ゴムのびびり（倍音を持つ帯。これが「ゴムが鳴っている」感じを作る） ---
     buzzO = actx.createOscillator(); buzzO.type = 'sawtooth'; buzzO.frequency.value = 900;
@@ -642,7 +651,7 @@
     buzzO.connect(buzzBp); buzzBp.connect(buzzG); buzzG.connect(buzzTrem); buzzTrem.connect(seG);
     try { buzzO.start(); } catch(e){}
     jitter(buzzO.frequency, 70, 1.13, 0.9);
-    jitter(buzzTrem.gain, 0.42, 2.70, 1.7);
+    jitter(buzzTrem.gain, 0.42, 2.00, 1.7);
 
     // --- 路面を転がるうなり ---
     roarIn = actx.createGain(); roarIn.gain.value = 0;
@@ -657,17 +666,20 @@
     // 固定のフィルターで上を切ると気の抜けた音になる。回転に合わせて開かせる。
     engG = actx.createGain(); engG.gain.value = 0;
     engF = actx.createBiquadFilter();
-    engF.type = 'lowpass'; engF.frequency.value = 900; engF.Q.value = 2.0;
-    engG.connect(engF); engF.connect(seG);
+    engF.type = 'lowpass'; engF.frequency.value = 900; engF.Q.value = 0.8;
+    // 低いところを持ち上げて野太くする
+    engLow = actx.createBiquadFilter();
+    engLow.type = 'lowshelf'; engLow.frequency.value = 190; engLow.gain.value = 7.5;
+    engG.connect(engF); engF.connect(engLow); engLow.connect(seG);
     // 基音だけだと薄い。下の胴鳴り・排気の歯切れ・上の倍音を重ねて厚みを出す
-    var wMain = pulseWave(22, -0.72);   // 主な爆発
-    var wSub  = pulseWave(9,  -0.55);   // 下の胴鳴り
+    var wMain = pulseWave(20, -1.00);   // 主な爆発（低い倍音を厚く）
+    var wSub  = pulseWave(7,  -0.85);   // 下の胴鳴り
     var PARTS = [
-      { wave:wSub,  type:'sawtooth', mul:0.5, det:   0, g:0.55 },
-      { wave:wMain, type:'sawtooth', mul:1.0, det: -12, g:1.00 },
-      { wave:wMain, type:'sawtooth', mul:1.0, det:  12, g:1.00 },
-      { wave:null,  type:'square',   mul:2.0, det:   6, g:0.24 },
-      { wave:null,  type:'sawtooth', mul:3.0, det:  -6, g:0.13 }
+      { wave:wSub,  type:'sawtooth', mul:0.5, det:   0, g:1.00 },
+      { wave:wMain, type:'sawtooth', mul:1.0, det:  -3, g:1.00 },
+      { wave:wMain, type:'sawtooth', mul:1.0, det:   3, g:1.00 },
+      { wave:null,  type:'square',   mul:2.0, det:   4, g:0.18 },
+      { wave:null,  type:'sawtooth', mul:3.0, det:  -4, g:0.06 }
     ];
     for (var j = 0; j < PARTS.length; j++){
       var o = actx.createOscillator();
@@ -686,11 +698,7 @@
     engNzF = actx.createBiquadFilter();
     engNzF.type = 'bandpass'; engNzF.frequency.value = 1200; engNzF.Q.value = 1.6;
     engNz.connect(engNzF); engNzF.connect(seG);
-    // 過給機の鳴き。回転が上がったときだけ薄くのせる
-    engWh = actx.createOscillator(); engWh.type = 'sine'; engWh.frequency.value = 3000;
-    engWhG = actx.createGain(); engWhG.gain.value = 0;
-    engWh.connect(engWhG); engWhG.connect(seG);
-    try { engWh.start(); } catch(e){}
+    // 過給機の鳴きは入れない（掃引する正弦波は「ビヨー」に聞こえる）
   }
 
   // ---------- 外から呼ぶもの ----------
@@ -754,11 +762,11 @@
       musicG.gain.setTargetAtTime(0, actx.currentTime, 0.08);
       sqIn.gain.setTargetAtTime(0, actx.currentTime, 0.05);
       scrIn.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      thIn.gain.setTargetAtTime(0, actx.currentTime, 0.05);
       buzzG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
       roarIn.gain.setTargetAtTime(0, actx.currentTime, 0.05);
       engG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
       engNz.gain.setTargetAtTime(0, actx.currentTime, 0.05);
-      engWhG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
       engLoad = 0; engPrevSp = 0;
     },
     pause: function(on){
@@ -767,11 +775,11 @@
       if (on){
         sqIn.gain.setTargetAtTime(0, actx.currentTime, 0.04);
         scrIn.gain.setTargetAtTime(0, actx.currentTime, 0.04);
+        thIn.gain.setTargetAtTime(0, actx.currentTime, 0.04);
         buzzG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
         roarIn.gain.setTargetAtTime(0, actx.currentTime, 0.04);
         engG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
         engNz.gain.setTargetAtTime(0, actx.currentTime, 0.04);
-        engWhG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
       }
     },
     count: function(n){
@@ -801,13 +809,15 @@
       if (run && sliding) want = Math.min(0.85, 0.22 + slip * 1.5) * Math.min(1, sp / 150);
       sqIn.gain.setTargetAtTime(want, t, 0.030);
       // こすれ：滑った量そのもの。速いほど強い
-      scrIn.gain.setTargetAtTime(run && sliding ? Math.min(0.40, 0.13 + slip * 0.73) * Math.min(1, sp / 110) : 0, t, 0.04);
-      scrBp.frequency.setTargetAtTime(300 + Math.min(1, slip * 2.2) * 260 + fast * 180, t, 0.06);
+      scrIn.gain.setTargetAtTime(run && sliding ? Math.min(0.62, 0.20 + slip * 1.15) * Math.min(1, sp / 110) : 0, t, 0.04);
+      scrBp.frequency.setTargetAtTime(165 + Math.min(1, slip * 2.2) * 150 + fast * 105, t, 0.06);
       // びびり：ゴムが食いついては離れる振動。倍音があるので「ゴム」に聞こえる
-      var bf = 640 + Math.min(1.0, slip * 2.2) * 420 + fast * 240;
+      var bf = 500 + Math.min(1.0, slip * 2.2) * 330 + fast * 180;
       buzzO.frequency.setTargetAtTime(bf, t, 0.05);
       buzzBp.frequency.setTargetAtTime(bf * 2.6, t, 0.05);
       buzzG.gain.setTargetAtTime(run && sliding ? Math.min(0.24, 0.08 + slip * 0.49) * Math.min(1, sp / 130) : 0, t, 0.035);
+      thIn.gain.setTargetAtTime(run && sliding ? Math.min(0.85, 0.30 + slip * 1.5) * Math.min(1, sp / 100) : 0, t, 0.05);
+      thBp.frequency.setTargetAtTime(78 + fast * 62, t, 0.08);
       var f0 = 4600 + Math.min(1.0, slip * 2.2) * 1600 + fast * 900;
       sqBp[0].frequency.setTargetAtTime(f0, t, 0.05);
       sqBp[1].frequency.setTargetAtTime(f0 * 1.49, t, 0.05);
@@ -833,13 +843,11 @@
       var ef = 24 + rev * 196;
       for (var i = 0; i < engO.length; i++)
         engO[i].frequency.setTargetAtTime(ef * engMul[i], t, 0.05);
-      engF.frequency.setTargetAtTime(320 + rev * 2400 + engLoad * 1100, t, 0.07);
-      engG.gain.setTargetAtTime(run ? (0.072 + engLoad * 0.064 + rev * 0.038) : 0, t, 0.08);
+      engF.frequency.setTargetAtTime(280 + rev * 1500 + engLoad * 700, t, 0.07);
+      engG.gain.setTargetAtTime(run ? (0.090 + engLoad * 0.080 + rev * 0.048) : 0, t, 0.08);
       engNz.gain.setTargetAtTime(run ? (0.018 + engLoad * 0.040) : 0, t, 0.08);
       engNzF.frequency.setTargetAtTime(700 + rev * 1700, t, 0.07);
-      engWh.frequency.setTargetAtTime(2400 + rev * 3200, t, 0.07);
-      var wh = rev > 0.55 ? (rev - 0.55) / 0.45 : 0;
-      engWhG.gain.setTargetAtTime(run ? 0.014 * wh * wh * (0.4 + engLoad * 0.6) : 0, t, 0.09);
+
     },
     setVol: function(v){
       vol = Math.max(0, Math.min(1, v));
@@ -1496,152 +1504,182 @@
     ctx.restore();
   }
 
-// 新しい車の絵。真上から見た90年代の国産クーペのつもり。
-// 前は -Y 方向。全長57・全幅（タイヤ外々）約30。当たり判定は位置で見ているので絵の大きさは自由。
+// 真上から見たドリフト車。全長62・全幅31。前は -Y 方向。
+// タイヤは張り出した泥よけの下に収め、端だけ見せる（実車の見え方）。
 function drawCarNew(ctx, COL, steerV, sliding, slip, blink, brakeOn){
   if (blink) return;
   var st = Math.max(-1, Math.min(1, steerV));
-  var sa = st * 0.50;
+  var sa = st * 0.55;
 
-  // ---- タイヤ ----
+  // ---- タイヤ（車体の下。泥よけからわずかに覗く） ----
   function wheel(x, y, rot, wide, long, smear){
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
     if (smear > 0){
-      ctx.globalAlpha = 0.30; ctx.fillStyle = '#0A0B0F';
+      ctx.globalAlpha = 0.28; ctx.fillStyle = '#07080B';
       rr(ctx, -wide/2 - smear, -long/2, wide + smear*2, long, 2); ctx.fill();
       ctx.globalAlpha = 1;
     }
-    ctx.fillStyle = '#0A0B0F';
-    rr(ctx, -wide/2, -long/2, wide, long, 1.9); ctx.fill();
-    ctx.fillStyle = 'rgba(214,210,198,0.10)';
-    ctx.fillRect(-wide/2 + 0.6, -long/2 + 1.3, wide - 1.2, 1.1);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(-wide/2 + 0.6, long/2 - 2.4, wide - 1.2, 1.5);
+    ctx.fillStyle = '#0B0C10';
+    rr(ctx, -wide/2, -long/2, wide, long, 1.6); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';                 // 溝
+    ctx.fillRect(-wide/2 + 1.4, -long/2 + 1.0, 0.9, long - 2.0);
+    ctx.fillRect( wide/2 - 2.3, -long/2 + 1.0, 0.9, long - 2.0);
+    ctx.fillStyle = 'rgba(206,202,190,0.12)';           // 肩の照り
+    ctx.fillRect(-wide/2 + 0.5, -long/2 + 1.4, wide - 1.0, 0.9);
     ctx.restore();
   }
-  var sm = sliding ? 1.0 + slip * 1.8 : 0;
-  wheel(-13.4, -17.5, sa, 5.8, 12.6, sm * 0.5);
-  wheel( 13.4, -17.5, sa, 5.8, 12.6, sm * 0.5);
-  wheel(-13.8,  18.0, 0,  6.6, 13.2, sm);
-  wheel( 13.8,  18.0, 0,  6.6, 13.2, sm);
+  var sm = sliding ? 0.8 + slip * 1.5 : 0;
+  wheel(-11.9, -18.5, sa, 6.2, 13.0, sm * 0.5);
+  wheel( 11.9, -18.5, sa, 6.2, 13.0, sm * 0.5);
+  wheel(-12.4,  18.5, 0,  7.2, 13.6, sm);
+  wheel( 12.4,  18.5, 0,  7.2, 13.6, sm);
 
   // ---- 影 ----
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  bodyPath(ctx, 1.6, 2.8); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  bodyPath(ctx, 1.8, 3.0); ctx.fill();
 
   // ---- 車体 ----
-  var grd = ctx.createLinearGradient(-12.5, 0, 12.5, 0);
-  grd.addColorStop(0,    shade(COL.body, -0.40));
-  grd.addColorStop(0.28, COL.body);
-  grd.addColorStop(0.55, shade(COL.body,  0.22));
-  grd.addColorStop(1,    shade(COL.body, -0.46));
+  var grd = ctx.createLinearGradient(-15, 0, 15, 0);
+  grd.addColorStop(0,    shade(COL.body, -0.50));
+  grd.addColorStop(0.16, shade(COL.body, -0.16));
+  grd.addColorStop(0.34, shade(COL.body,  0.30));   // 縦に走る照り
+  grd.addColorStop(0.46, COL.body);
+  grd.addColorStop(0.78, shade(COL.body, -0.22));
+  grd.addColorStop(1,    shade(COL.body, -0.54));
   ctx.fillStyle = grd;
   bodyPath(ctx, 0, 0); ctx.fill();
 
-  // ---- 泥よけの張り出し（縁に沿った細い影） ----
   ctx.save(); bodyPath(ctx, 0, 0); ctx.clip();
+
+  // 泥よけの張り出し
+  ctx.fillStyle = 'rgba(0,0,0,0.26)';
+  rr(ctx, -15.2, -25.0, 4.6, 14.0, 2.2); ctx.fill();
+  rr(ctx,  10.6, -25.0, 4.6, 14.0, 2.2); ctx.fill();
+  rr(ctx, -15.6,  11.5, 5.0, 14.5, 2.2); ctx.fill();
+  rr(ctx,  10.6,  11.5, 5.0, 14.5, 2.2); ctx.fill();
+  // 泥よけの縁の線
+  ctx.strokeStyle = 'rgba(0,0,0,0.42)'; ctx.lineWidth = 0.9;
+  ctx.beginPath(); ctx.moveTo(-10.8, -25.0); ctx.lineTo(-10.8, -11.0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 10.8, -25.0); ctx.lineTo( 10.8, -11.0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-11.0,  11.5); ctx.lineTo(-11.0,  26.0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 11.0,  11.5); ctx.lineTo( 11.0,  26.0); ctx.stroke();
+  // 横に走る細い帯
   ctx.fillStyle = 'rgba(0,0,0,0.20)';
-  rr(ctx, -12.4, -23.5, 2.8, 12.5, 1.4); ctx.fill();
-  rr(ctx,   9.6, -23.5, 2.8, 12.5, 1.4); ctx.fill();
-  rr(ctx, -12.8,  11.5, 3.0, 13.0, 1.4); ctx.fill();
-  rr(ctx,   9.8,  11.5, 3.0, 13.0, 1.4); ctx.fill();
+  ctx.fillRect(-13.0, -3.0, 2.2, 12.0);
+  ctx.fillRect( 10.8, -3.0, 2.2, 12.0);
   ctx.restore();
 
-  ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.0;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.1;
   bodyPath(ctx, 0, 0); ctx.stroke();
 
-  // ---- 前の開口部 ----
-  ctx.fillStyle = '#15171D';
-  rr(ctx, -5.4, -28.6, 10.8, 2.4, 1); ctx.fill();
+  // ---- 前の下ばり ----
+  ctx.fillStyle = '#14161C';
+  rr(ctx, -12.4, -32.2, 24.8, 3.0, 1.2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  rr(ctx, -12.4, -32.2, 24.8, 1.0, 0.8); ctx.fill();
+  // 開口部
+  ctx.fillStyle = '#0D0F14';
+  rr(ctx, -6.0, -30.4, 12.0, 2.6, 1); ctx.fill();
 
-  // ---- 長いボンネットの筋と通気口 ----
-  ctx.strokeStyle = 'rgba(0,0,0,0.32)'; ctx.lineWidth = 0.9;
-  ctx.beginPath(); ctx.moveTo(-4.0, -25.5); ctx.lineTo(-3.0, -13.5); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo( 4.0, -25.5); ctx.lineTo( 3.0, -13.5); ctx.stroke();
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  rr(ctx, -6.6, -20.5, 5.4, 2.0, 0.9); ctx.fill();
-  rr(ctx,  1.2, -20.5, 5.4, 2.0, 0.9); ctx.fill();
+  // ---- 長いボンネット ----
+  ctx.strokeStyle = 'rgba(0,0,0,0.34)'; ctx.lineWidth = 0.9;
+  ctx.beginPath(); ctx.moveTo(-9.6, -28.0); ctx.lineTo(-9.2, -12.0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 9.6, -28.0); ctx.lineTo( 9.2, -12.0); ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.58)';
+  for (var v = 0; v < 3; v++){
+    var vy = -23.0 + v * 2.3;
+    rr(ctx, -7.0, vy, 5.6, 1.3, 0.6); ctx.fill();
+    rr(ctx,  1.4, vy, 5.6, 1.3, 0.6); ctx.fill();
+  }
 
   // ---- 窓と屋根 ----
-  var glass = '#0B0D12';
-  ctx.fillStyle = glass;                          // 前窓（よく寝かせる）
-  ctx.beginPath();
-  ctx.moveTo(-6.8, -12.2); ctx.lineTo(6.8, -12.2);
-  ctx.lineTo(9.0, -3.0); ctx.lineTo(-9.0, -3.0); ctx.closePath(); ctx.fill();
-  var rg = ctx.createLinearGradient(-8.8, 0, 8.8, 0);
-  rg.addColorStop(0, shade(COL.body, -0.22));
-  rg.addColorStop(0.42, shade(COL.body, 0.10));
+  var glass = '#0A0C11';
+  ctx.fillStyle = glass;
+  ctx.beginPath();                                    // 前窓
+  ctx.moveTo(-7.0, -11.0); ctx.lineTo(7.0, -11.0);
+  ctx.lineTo(9.4, -2.0); ctx.lineTo(-9.4, -2.0); ctx.closePath(); ctx.fill();
+  var rg = ctx.createLinearGradient(-9, 0, 9, 0);
+  rg.addColorStop(0, shade(COL.body, -0.24));
+  rg.addColorStop(0.36, shade(COL.body, 0.34));
   rg.addColorStop(1, shade(COL.body, -0.30));
-  ctx.fillStyle = rg;                             // 屋根
-  rr(ctx, -8.2, -3.0, 16.4, 10.0, 1.6); ctx.fill();
-  ctx.fillStyle = glass;                          // 後窓
+  ctx.fillStyle = rg;                                 // 屋根
+  rr(ctx, -8.4, -2.0, 16.8, 8.6, 1.4); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';                 // 柱
+  ctx.fillRect(-9.0, -2.4, 1.6, 9.4);
+  ctx.fillRect( 7.4, -2.4, 1.6, 9.4);
+  ctx.fillStyle = glass;                              // 後窓
   ctx.beginPath();
-  ctx.moveTo(-8.6, 7.0); ctx.lineTo(8.6, 7.0);
-  ctx.lineTo(6.8, 15.0); ctx.lineTo(-6.8, 15.0); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';       // 前窓の映り込み
+  ctx.moveTo(-8.6, 6.6); ctx.lineTo(8.6, 6.6);
+  ctx.lineTo(6.8, 13.4); ctx.lineTo(-6.8, 13.4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.13)';           // 前窓の映り込み
   ctx.beginPath();
-  ctx.moveTo(-6.6, -12.0); ctx.lineTo(-1.2, -12.0);
-  ctx.lineTo(-4.4, -3.2); ctx.lineTo(-8.8, -3.2); ctx.closePath(); ctx.fill();
+  ctx.moveTo(-6.8, -10.8); ctx.lineTo(-1.4, -10.8);
+  ctx.lineTo(-4.6, -2.2); ctx.lineTo(-9.2, -2.2); ctx.closePath(); ctx.fill();
 
-  // ---- ドアの筋・ドアミラー ----
-  ctx.strokeStyle = 'rgba(0,0,0,0.38)'; ctx.lineWidth = 0.9;
-  ctx.beginPath(); ctx.moveTo(-10.6, -2.6); ctx.lineTo(-10.2, 7.4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo( 10.6, -2.6); ctx.lineTo( 10.2, 7.4); ctx.stroke();
-  ctx.fillStyle = shade(COL.body, -0.34);
-  rr(ctx, -14.0, -13.2, 3.6, 2.4, 1); ctx.fill();
-  rr(ctx,  10.4, -13.2, 3.6, 2.4, 1); ctx.fill();
+  // ---- 側面の帯・ドアミラー ----
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(-11.6, -1.6, 1.4, 8.0);
+  ctx.fillRect( 10.2, -1.6, 1.4, 8.0);
+  ctx.fillStyle = shade(COL.body, -0.40);
+  rr(ctx, -14.6, -12.4, 2.8, 2.2, 0.9); ctx.fill();
+  rr(ctx,  11.8, -12.4, 2.8, 2.2, 0.9); ctx.fill();
 
-  // ---- 後ろの翼 ----
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  rr(ctx, -13.0, 20.2, 26.0, 3.4, 1.3); ctx.fill();
-  ctx.fillStyle = shade(COL.body, 0.12);
-  rr(ctx, -13.0, 19.2, 26.0, 3.0, 1.3); ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(-6.8, 17.4, 1.8, 2.4);
-  ctx.fillRect( 5.0, 17.4, 1.8, 2.4);
-  // 荷室のふたの筋
-  ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 0.9;
-  ctx.beginPath(); ctx.moveTo(-8.6, 24.0); ctx.lineTo(8.6, 24.0); ctx.stroke();
+  // ---- 後ろの翼（立て板つき） ----
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';                 // 翼の下の影
+  rr(ctx, -13.6, 20.0, 27.2, 4.0, 1.2); ctx.fill();
+  var wg = ctx.createLinearGradient(0, 18.8, 0, 22.2);
+  wg.addColorStop(0, shade(COL.body, -0.02));
+  wg.addColorStop(1, shade(COL.body, -0.40));
+  ctx.fillStyle = wg;
+  rr(ctx, -13.6, 18.8, 27.2, 3.4, 1.2); ctx.fill();
+  ctx.fillStyle = '#14161C';                          // 立て板
+  rr(ctx, -13.8, 18.6, 1.8, 5.6, 0.7); ctx.fill();
+  rr(ctx,  12.0, 18.6, 1.8, 5.6, 0.7); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';                  // 支柱
+  ctx.fillRect(-6.4, 16.8, 2.0, 3.0);
+  ctx.fillRect( 4.4, 16.8, 2.0, 3.0);
 
   // ---- 前照灯 ----
   ctx.fillStyle = COL.lampCore;
-  rr(ctx, -8.6, -27.6, 5.2, 2.6, 1.1); ctx.fill();
-  rr(ctx,  3.4, -27.6, 5.2, 2.6, 1.1); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  rr(ctx, -8.6, -27.6, 5.2, 1.1, 0.7); ctx.fill();
-  rr(ctx,  3.4, -27.6, 5.2, 1.1, 0.7); ctx.fill();
+  rr(ctx, -9.4, -30.0, 5.8, 2.8, 1.1); ctx.fill();
+  rr(ctx,  3.6, -30.0, 5.8, 2.8, 1.1); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  rr(ctx, -9.4, -30.0, 5.8, 1.1, 0.7); ctx.fill();
+  rr(ctx,  3.6, -30.0, 5.8, 1.1, 0.7); ctx.fill();
 
   // ---- 尾灯 ----
   var hot = brakeOn || sliding;
   if (hot){
-    ctx.globalAlpha = 0.30; ctx.fillStyle = '#FF3B2E';
-    rr(ctx, -11.4, 24.4, 9.2, 4.4, 1.8); ctx.fill();
-    rr(ctx,   2.2, 24.4, 9.2, 4.4, 1.8); ctx.fill();
+    ctx.globalAlpha = 0.32; ctx.fillStyle = '#FF3B2E';
+    rr(ctx, -12.0, 26.2, 9.8, 4.6, 1.8); ctx.fill();
+    rr(ctx,   2.2, 26.2, 9.8, 4.6, 1.8); ctx.fill();
     ctx.globalAlpha = 1;
   }
-  ctx.fillStyle = hot ? '#FF6A5C' : '#A82C25';
-  rr(ctx, -10.4, 25.2, 7.2, 2.6, 1); ctx.fill();
-  rr(ctx,   3.2, 25.2, 7.2, 2.6, 1); ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.fillRect(-1.6, 25.2, 3.2, 2.6);
+  ctx.fillStyle = hot ? '#FF6A5C' : '#A02821';
+  rr(ctx, -11.0, 27.0, 7.8, 2.8, 1); ctx.fill();
+  rr(ctx,   3.2, 27.0, 7.8, 2.8, 1); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(-1.8, 27.0, 3.6, 2.8);
+  ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 0.9;   // 荷室のふた
+  ctx.beginPath(); ctx.moveTo(-9.0, 25.6); ctx.lineTo(9.0, 25.6); ctx.stroke();
 
   // ---- 上の縁の照り返し ----
-  ctx.strokeStyle = 'rgba(255,255,255,0.11)'; ctx.lineWidth = 0.7;
-  ctx.beginPath(); ctx.moveTo(-5.8, -28.8); ctx.lineTo(5.8, -28.8); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 0.7;
+  ctx.beginPath(); ctx.moveTo(-6.0, -31.0); ctx.lineTo(6.0, -31.0); ctx.stroke();
 }
 
 function bodyPath(ctx, dx, dy){
   ctx.beginPath();
-  ctx.moveTo(dx +  -5.6, dy + -29.0);
-  ctx.lineTo(dx + -10.2, dy + -26.2);
-  ctx.quadraticCurveTo(dx + -12.2, dy + -23.5, dx + -12.0, dy + -17.5);
-  ctx.quadraticCurveTo(dx + -10.4, dy +  -4.0, dx + -10.6, dy +   8.0);
-  ctx.quadraticCurveTo(dx + -12.6, dy +  13.0, dx + -12.4, dy +  20.0);
-  ctx.lineTo(dx + -10.0, dy +  28.0);
-  ctx.lineTo(dx +  10.0, dy +  28.0);
-  ctx.quadraticCurveTo(dx +  12.6, dy +  13.0, dx +  10.6, dy +   8.0);
-  ctx.quadraticCurveTo(dx +  10.4, dy +  -4.0, dx +  12.0, dy + -17.5);
-  ctx.quadraticCurveTo(dx +  12.2, dy + -23.5, dx +  10.2, dy + -26.2);
+  ctx.moveTo(dx +  -6.2, dy + -31.2);
+  ctx.lineTo(dx + -11.4, dy + -28.6);
+  ctx.quadraticCurveTo(dx + -14.4, dy + -25.6, dx + -14.2, dy + -18.5);  // 前の張り出し
+  ctx.quadraticCurveTo(dx + -11.8, dy +  -5.0, dx + -12.0, dy +   8.0);  // 胴を絞る
+  ctx.quadraticCurveTo(dx + -15.2, dy +  13.0, dx + -15.0, dy +  21.0);  // 後ろの張り出し
+  ctx.lineTo(dx + -11.2, dy +  30.0);
+  ctx.lineTo(dx +  11.2, dy +  30.0);
+  ctx.quadraticCurveTo(dx +  15.2, dy +  13.0, dx +  12.0, dy +   8.0);
+  ctx.quadraticCurveTo(dx +  11.8, dy +  -5.0, dx +  14.2, dy + -18.5);
+  ctx.quadraticCurveTo(dx +  14.4, dy + -25.6, dx +  11.4, dy + -28.6);
   ctx.closePath();
 }
 
