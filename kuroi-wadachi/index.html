@@ -1309,6 +1309,22 @@
     } catch(e){}
   }
 
+  // 走り方（タイヤの踏ん張りの式）を変えたので、古い決まりで出した記録は
+  // 一度だけ消す。名前と音量は残す。
+  var RULES = '2';
+  function resetIfOldRules(){
+    try {
+      if (localStorage.getItem('wadachi.rules') === RULES) return false;
+      for (var i = 0; i < 3; i++){
+        localStorage.removeItem('wadachi.time.' + i);
+        localStorage.removeItem('wadachi.ghost.' + i);
+        localStorage.removeItem('wadachi.ghostT.' + i);
+      }
+      localStorage.setItem('wadachi.rules', RULES);
+      return true;
+    } catch(e){ return false; }
+  }
+
   var bests = [0,0,0];
   function loadBest(){
     try {
@@ -1338,6 +1354,7 @@
   function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
     reset(); st = 'count'; countT = 3.2; countEl.classList.remove('off'); veil.classList.add('off'); lastT = 0; }
+  var wiped = false;
   function showTitle(){
     st = 'title'; reset();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
@@ -1347,7 +1364,8 @@
     veilBody.innerHTML = '<span class="course">' + c.name + '　<em>' + c.tag + '　全長 ' + Math.round(TRACKLEN) + '</em></span><br>' +
       '左右だけ。アクセルは自動、ブレーキは無い。<br>' +
       'ヘアピンは曲がりきれない。<br><b>滑らせて速度を落とす</b>のが唯一の減速。<br>' +
-      '<span class="gh">' + ghostLine() + '</span>';
+      '<span class="gh">' + ghostLine() + '</span>' +
+      (wiped ? '<br><span class="gh" style="color:#F0873A">走り方を変えたので、前の決まりで出した記録は消しました</span>' : '');
     goBtn.textContent = 'スタート';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -2016,6 +2034,7 @@ function shade(hex, k){
   }
 
   function boot(saved){
+    wiped = resetIfOldRules();
     loadBest();
     syncGh();
     if (saved && saved.best && (!best || saved.best < best)) { best = saved.best; saveBest(); }
