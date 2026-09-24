@@ -91,11 +91,18 @@ function cleanName(raw) {
   return s;
 }
 
+// 走りの記録（ゴースト）の上限。数字とコンマだけの文字列で預かる
+const GHOST_MAX = 120000;
+
 // 表が無ければ作る（初回だけ働く）
 async function ensure(env) {
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS scores (game TEXT NOT NULL, name TEXT NOT NULL, ' +
     'score REAL NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (game, name))'
+  ).run();
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS ghosts (game TEXT PRIMARY KEY, name TEXT NOT NULL, ' +
+    'score REAL NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL)'
   ).run();
 }
 
@@ -123,6 +130,8 @@ export default {
         '順位表の預かり所です。（D1）\n' +
         '  GET  /board?game=<ゲーム名>\n' +
         '  POST /submit  {game, name, score}\n' +
+        '  GET  /ghost?game=<ゲーム名>        … 1位の走りの記録\n' +
+        '  POST /ghost   {game, name, score, data}\n' +
         '取り扱うゲーム: ' + Object.keys(GAMES).join(', ') + '\n',
         { headers: Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, head) }
       );
@@ -201,6 +210,66 @@ export default {
       }, 200, head);
     }
 
+    // --- 1位の走りの記録を返す ---
+    if (path === '/ghost' && req.method === 'GET') {
+      const game = url.searchParams.get('game') || '';
+      if (!GAMES[game]) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
+      const g = await env.DB
+        .prepare('SELECT name, score, data, at FROM ghosts WHERE game = ?')
+        .bind(game).first();
+      if (!g) return json({ game: game, none: true }, 200, head);
+      return json({ game: game, name: g.name, score: g.score, at: g.at, data: g.data }, 200, head);
+    }
+
+    // --- 走りの記録を受け取る（1位のぶんだけ残す） ---
+    if (path === '/ghost' && req.method === 'POST') {
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ error: '中身が読めません' }, 400, head); }
+
+      const game = String(body.game || '');
+      const rule = GAMES[game];
+      if (!rule) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
+
+      const name = cleanName(body.name);
+      if (name === null) return json({ error: 'その名前は使えません' }, 400, head);
+
+      if (typeof body.score !== 'number' || !isFinite(body.score)) {
+        return json({ error: '記録がおかしいです' }, 400, head);
+      }
+      if (body.score < 0 || body.score > rule.max) {
+        return json({ error: '記録がおかしいです' }, 400, head);
+      }
+      const s = Math.round(body.score * 100) / 100;
+
+      // 走りの記録は数字・コンマ・小数点・マイナスだけ。それ以外が混ざっていたら受け取らない
+      const data = typeof body.data === 'string' ? body.data : '';
+      if (!data || data.length > GHOST_MAX) {
+        return json({ error: '走りの記録が空か、大きすぎます' }, 400, head);
+      }
+      if (!/^[-0-9.,]+$/.test(data)) {
+        return json({ error: '走りの記録に数字以外が混じっています' }, 400, head);
+      }
+
+      // 1位のぶんだけ残す。読んでから書くのではなく1回の命令で入れ替えるので、
+      // 二人が同時に出しても取りこぼさない。
+      const better = rule.order === 'asc' ? '<' : '>';
+      await env.DB.prepare(
+        'INSERT INTO ghosts (game, name, score, data, at) VALUES (?, ?, ?, ?, ?) ' +
+        'ON CONFLICT(game) DO UPDATE SET name = excluded.name, score = excluded.score, ' +
+        'data = excluded.data, at = excluded.at ' +
+        'WHERE excluded.score ' + better + ' ghosts.score'
+      ).bind(game, name, s, data, Date.now()).run();
+
+      const now = await env.DB
+        .prepare('SELECT name, score FROM ghosts WHERE game = ?')
+        .bind(game).first();
+      return json({
+        ok: true,
+        kept: !!now && now.name === name && now.score === s,
+        top: now ? { name: now.name, score: now.score } : null
+      }, 200, head);
+    }
+
     // --- 手入れ（合言葉が要る） ---
     if (path.startsWith('/admin/') && req.method === 'POST') {
       const key = req.headers.get('x-admin-key') || '';
@@ -214,7 +283,12 @@ export default {
 
       if (path === '/admin/clear') {
         const r = await env.DB.prepare('DELETE FROM scores WHERE game = ?').bind(game).run();
-        return json({ ok: true, cleared: game, removed: r && r.meta ? r.meta.changes : null }, 200, head);
+        const g = await env.DB.prepare('DELETE FROM ghosts WHERE game = ?').bind(game).run();
+        return json({
+          ok: true, cleared: game,
+          removed: r && r.meta ? r.meta.changes : null,
+          ghostRemoved: g && g.meta ? g.meta.changes : null
+        }, 200, head);
       }
       if (path === '/admin/remove') {
         const name = String(body.name || '');

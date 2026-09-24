@@ -98,6 +98,60 @@ check('空にする → 消えた '+r.body.removed+'件／残り '+b.body.list.l
 b = await call('GET','/board?game=wadachi-1');
 check('別のゲームは消えていない（'+b.body.list.length+'件）', b.body.list.length>0);
 
+console.log('\n=== 1位の走りの記録（ゴースト）===');
+db.exec('DELETE FROM ghosts');
+let g = await call('GET','/ghost?game=wadachi-1');
+check('まだ誰も出していないと none: ' + (g.body.none===true), g.body.none===true);
+
+// 走りの記録は数字とコンマだけの文字列
+const path1 = '0,0,0,0,10,-20,0.05,1,20,-41,0.1,2';
+g = await call('POST','/ghost',{game:'wadachi-1',name:'はやい人',score:50,data:path1});
+check('1本目は受け取る（残ったか ' + g.body.kept + '）', g.body.kept===true);
+g = await call('GET','/ghost?game=wadachi-1');
+check('取り出すと ' + g.body.name + ' の ' + g.body.score, g.body.name==='はやい人' && g.body.score===50);
+check('中身がそのまま戻る', g.body.data===path1);
+
+// タイムは小さいほうが上（order:asc）
+g = await call('POST','/ghost',{game:'wadachi-1',name:'おそい人',score:70,data:'9,9,9,9'});
+check('遅い記録は入れ替えない（残ったか ' + g.body.kept + '）', g.body.kept===false);
+g = await call('GET','/ghost?game=wadachi-1');
+check('1位のままなのは ' + g.body.name, g.body.name==='はやい人' && g.body.data===path1);
+g = await call('POST','/ghost',{game:'wadachi-1',name:'もっと速い人',score:41.5,data:'1,2,3,4'});
+check('速い記録なら入れ替わる（' + g.body.top.name + ' ' + g.body.top.score + '）',
+      g.body.kept===true && g.body.top.name==='もっと速い人');
+
+// 点数が大きいほうが上のゲーム（order:desc）でも向きが正しいか
+db.exec("DELETE FROM ghosts WHERE game='tapioca'");
+await call('POST','/ghost',{game:'tapioca',name:'A',score:100,data:'1,1'});
+g = await call('POST','/ghost',{game:'tapioca',name:'B',score:50,data:'2,2'});
+check('点数のゲームでは低い点で入れ替わらない', g.body.kept===false);
+g = await call('POST','/ghost',{game:'tapioca',name:'C',score:200,data:'3,3'});
+check('点数のゲームでは高い点で入れ替わる（' + g.body.top.name + '）', g.body.top.name==='C');
+
+console.log('\n--- 変なものを弾く ---');
+g = await call('POST','/ghost',{game:'wadachi-1',name:'わる',score:1,data:'alert(1)'});
+check('数字以外が混じっていたら断る → ' + g.status, g.status===400);
+g = await call('POST','/ghost',{game:'wadachi-1',name:'わる',score:1,data:'<script>'});
+check('タグが混じっていたら断る → ' + g.status, g.status===400);
+g = await call('POST','/ghost',{game:'wadachi-1',name:'わる',score:1,data:''});
+check('空なら断る → ' + g.status, g.status===400);
+g = await call('POST','/ghost',{game:'wadachi-1',name:'わる',score:1,data:'1,'.repeat(70000)});
+check('大きすぎたら断る → ' + g.status, g.status===400);
+g = await call('POST','/ghost',{game:'wadachi-1',name:'わる',score:null,data:'1,2'});
+check('記録が数値でなければ断る → ' + g.status, g.status===400);
+g = await call('POST','/ghost',{game:'wadachi-1',name:'しね',score:1,data:'1,2'});
+check('使えない名前は断る → ' + g.status, g.status===400);
+g = await call('POST','/ghost',{game:'そんなゲーム無い',name:'A',score:1,data:'1,2'});
+check('知らないゲームは断る → ' + g.status, g.status===400);
+g = await call('GET','/ghost?game=そんなゲーム無い');
+check('取り出しも知らないゲームは断る → ' + g.status, g.status===400);
+
+console.log('\n--- 手入れで走りの記録も消える ---');
+r = await call('POST','/admin/clear',{game:'wadachi-1'},{'x-admin-key':'test-admin-key-123'});
+check('順位表と一緒に走りの記録も消えた（' + r.body.ghostRemoved + '件）', r.body.ghostRemoved===1);
+g = await call('GET','/ghost?game=wadachi-1');
+check('消したあとは none', g.body.none===true);
+
 console.log('\n=== 相手先の許可（CORS）===');
 check('許した相手には '+b.cors, b.cors==='https://pdylplplp-stack.github.io');
 
