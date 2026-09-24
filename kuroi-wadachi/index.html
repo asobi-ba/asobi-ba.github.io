@@ -1557,6 +1557,12 @@
 
     car.vx = fx*fwd + rx*lat;
     car.vy = fy*fwd + ry*lat;
+    // 前向きの成分だけを頭打ちにすると、車が回ったときに前向きへ空きができて
+    // そこへ推進が継ぎ足される。回すたびに繰り返されるので、振り回すほど
+    // 全体の速さが増えてしまう（実測で最高速の106%まで出ていた）。
+    // 全体の速さで頭打ちにする。まっすぐ走ったときの最高速は変わらない。
+    var tot = Math.hypot(car.vx, car.vy);
+    if (tot > MAXS){ var kk = MAXS / tot; car.vx *= kk; car.vy *= kk; }
     car.x += car.vx * dt;
     car.y += car.vy * dt;
 
