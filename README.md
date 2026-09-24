@@ -1,7 +1,7 @@
 # ブラウザゲーム置き場
 
 インストール不要で遊べる自作のブラウザゲームを置いています。
-公開先: https://pdylplplp-stack.github.io/games/
+公開先: https://asobi-ba.github.io/
 
 ## 中身
 
