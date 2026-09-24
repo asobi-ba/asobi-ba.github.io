@@ -218,6 +218,13 @@
     color:var(--cool);background:rgba(11,12,16,.55);
     border:1px solid rgba(196,192,182,.22);border-radius:3px;padding:5px 8px;
   }
+  .ghb{
+    -webkit-appearance:none;appearance:none;cursor:pointer;
+    font-family:'Oxanium',monospace;font-size:9px;letter-spacing:.14em;
+    color:var(--dim);background:transparent;
+    border:1px solid rgba(196,192,182,.22);border-radius:2px;padding:3px 6px;margin-left:4px;
+  }
+  .ghb.on{ color:var(--cool);border-color:rgba(95,211,224,.55); }
   .vol input{
     -webkit-appearance:none;appearance:none;width:74px;height:3px;
     background:rgba(196,192,182,.3);border-radius:2px;outline:none;cursor:pointer;
@@ -284,7 +291,7 @@
     </div>
   </div>
 
-  <div class="vol"><span>SOUND</span><input id="volSl" type="range" min="0" max="100" step="5" value="50" aria-label="音量"></div>
+  <div class="vol"><span>SOUND</span><input id="volSl" type="range" min="0" max="100" step="5" value="50" aria-label="音量"><button class="ghb" id="ghBtn" type="button" aria-pressed="true">GHOST</button></div>
 
   <div class="legend">
     <span>← → / A D でハンドル</span>
@@ -669,17 +676,19 @@
     engF.type = 'lowpass'; engF.frequency.value = 900; engF.Q.value = 0.8;
     // 低いところを持ち上げて野太くする
     engLow = actx.createBiquadFilter();
-    engLow.type = 'lowshelf'; engLow.frequency.value = 190; engLow.gain.value = 7.5;
+    engLow.type = 'lowshelf'; engLow.frequency.value = 190; engLow.gain.value = 2.5;
     engG.connect(engF); engF.connect(engLow); engLow.connect(seG);
     // 基音だけだと薄い。下の胴鳴り・排気の歯切れ・上の倍音を重ねて厚みを出す
-    var wMain = pulseWave(20, -1.00);   // 主な爆発（低い倍音を厚く）
-    var wSub  = pulseWave(7,  -0.85);   // 下の胴鳴り
+    var wMain = pulseWave(18, -0.80);   // 主な爆発
+    var wUp   = pulseWave(8,  -0.70);   // 上の鳴き
     var PARTS = [
-      { wave:wSub,  type:'sawtooth', mul:0.5, det:   0, g:1.00 },
+      // 直列4気筒は均等に爆発する＝倍数がそろった成分しか出ない。
+      // 0.5倍（1回転に1度の成分）を入れると不等間隔になってV8のドロドロになる。
       { wave:wMain, type:'sawtooth', mul:1.0, det:  -3, g:1.00 },
       { wave:wMain, type:'sawtooth', mul:1.0, det:   3, g:1.00 },
-      { wave:null,  type:'square',   mul:2.0, det:   4, g:0.18 },
-      { wave:null,  type:'sawtooth', mul:3.0, det:  -4, g:0.06 }
+      { wave:wUp,   type:'sawtooth', mul:2.0, det:   0, g:0.42 },
+      { wave:null,  type:'square',   mul:2.0, det:   4, g:0.28 },
+      { wave:null,  type:'sawtooth', mul:3.0, det:  -4, g:0.14 }
     ];
     for (var j = 0; j < PARTS.length; j++){
       var o = actx.createOscillator();
@@ -840,13 +849,13 @@
       engLoad += (load - engLoad) * 0.15;
 
       // 爆発の間隔。下を 26Hz まで落とすと一発ずつが粒として聞こえる（ドロドロ）
-      var ef = 24 + rev * 196;
+      var ef = 30 + rev * 245;
       for (var i = 0; i < engO.length; i++)
         engO[i].frequency.setTargetAtTime(ef * engMul[i], t, 0.05);
-      engF.frequency.setTargetAtTime(280 + rev * 1500 + engLoad * 700, t, 0.07);
-      engG.gain.setTargetAtTime(run ? (0.090 + engLoad * 0.080 + rev * 0.048) : 0, t, 0.08);
+      engF.frequency.setTargetAtTime(380 + rev * 2400 + engLoad * 900, t, 0.07);
+      engG.gain.setTargetAtTime(run ? (0.140 + engLoad * 0.124 + rev * 0.074) : 0, t, 0.08);
       engNz.gain.setTargetAtTime(run ? (0.018 + engLoad * 0.040) : 0, t, 0.08);
-      engNzF.frequency.setTargetAtTime(700 + rev * 1700, t, 0.07);
+      engNzF.frequency.setTargetAtTime(950 + rev * 2100, t, 0.07);
 
     },
     setVol: function(v){
@@ -1139,12 +1148,65 @@
   var marks = [], smoke = [], lastWheels = null, hitT = 0, stuckT = 0, holdT = 0, steerV = 0;
   var lastSlip = 0, lastSp = 0;          // 音に渡す用（sp は step() の中だけの変数なので写す）
 
+  // ---------- ゴースト（自己ベストの走りを並走させる） ----------
+  var GH_DT = 0.05;                    // 0.05秒ごとに位置を控える（毎秒20回）
+  var rec = [];                        // いま走っている記録 x,y,向き,通過点
+  var ghost = null;                    // 手本にする記録
+  var ghosts = [null,null,null];
+  var ghostOn = true;
+  var GCOL = { body:'#5FD3E0', lampCore:'#CFEFF5' };
+
+  function loadGhosts(){
+    for (var i=0;i<3;i++){
+      try {
+        var v = localStorage.getItem('wadachi.ghost.' + i);
+        ghosts[i] = v ? JSON.parse(v) : null;
+        if (ghosts[i] && (!ghosts[i].length || ghosts[i].length % 4)) ghosts[i] = null;
+      } catch(e){ ghosts[i] = null; }
+    }
+    try { ghostOn = localStorage.getItem('wadachi.ghostOn') !== '0'; } catch(e){}
+  }
+  function saveGhost(){
+    ghosts[courseIdx] = rec.slice();
+    try { localStorage.setItem('wadachi.ghost.' + courseIdx, JSON.stringify(ghosts[courseIdx])); }
+    catch(e){}                         // 入りきらなくても走行そのものは止めない
+  }
+  // 手本の t 秒時点の姿。終わっていれば null
+  function ghostPose(t){
+    if (!ghost) return null;
+    var n = ghost.length / 4;
+    var f = t / GH_DT, i = Math.floor(f);
+    if (i < 0) i = 0;
+    if (i >= n - 1) return null;
+    var u = f - i, a = i*4, b = a + 4;
+    var da = ghost[b+2] - ghost[a+2];
+    while (da >  Math.PI) da -= Math.PI*2;
+    while (da < -Math.PI) da += Math.PI*2;
+    return { x: ghost[a] + (ghost[b] - ghost[a]) * u,
+             y: ghost[a+1] + (ghost[b+1] - ghost[a+1]) * u,
+             ang: ghost[a+2] + da * u };
+  }
+  // 手本が、いまの自分と同じ地点を通ったのは何秒のときか
+  function ghostTimeAt(gi){
+    if (!ghost) return -1;
+    var n = ghost.length / 4, lo = 0, hi = n - 1;
+    if (ghost[3] > gi) return 0;
+    if (ghost[(n-1)*4 + 3] < gi) return -1;
+    while (lo < hi){
+      var mid = (lo + hi) >> 1;
+      if (ghost[mid*4 + 3] < gi) lo = mid + 1; else hi = mid;
+    }
+    return lo * GH_DT;
+  }
+
   var bests = [0,0,0];
   function loadBest(){
     try {
       for (var i=0;i<3;i++){ var v = localStorage.getItem('wadachi.time.'+i); if (v) bests[i] = parseFloat(v)||0; }
     } catch(e){}
     best = bests[courseIdx];
+    loadGhosts();
+    ghost = ghosts[courseIdx];
   }
   function saveBest(){
     bests[courseIdx] = best;
@@ -1161,6 +1223,7 @@
     score = 0; pending = 0; mult = 1; driftT = 0; idleT = 0; sliding = false;
     marks.length = 0; smoke.length = 0; lastWheels = null; hitT = 0; stuckT = 0; holdT = 0; steerV = 0;
     lastSlip = 0; lastSp = 0;
+    rec.length = 0;
   }
   function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
@@ -1194,7 +1257,7 @@
     }
     if (window.SCOREBOARD) SCOREBOARD.over('wadachi-' + (courseIdx + 1), time);
     var isNew = (best === 0 || time < best);
-    if (isNew) { best = time; saveBest(); }
+    if (isNew) { best = time; saveBest(); saveGhost(); ghost = ghosts[courseIdx]; }
     if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(isNew); }
     veilTitle.textContent = 'GOAL';
     veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
@@ -1214,6 +1277,7 @@
     courseIdx = i;
     buildTrack();
     best = bests[courseIdx];
+    ghost = ghosts[courseIdx];
     var btns = tabsEl.getElementsByTagName('button');
     for (var k=0;k<btns.length;k++) btns[k].classList.toggle('on', k === courseIdx);
     prev = {};
@@ -1224,6 +1288,21 @@
     while (b && b !== tabsEl && !b.getAttribute('data-c')) b = b.parentNode;
     if (b && b !== tabsEl) setCourse(parseInt(b.getAttribute('data-c'), 10));
   });
+
+  var ghBtn = document.getElementById('ghBtn');
+  function syncGh(){
+    if (!ghBtn) return;
+    ghBtn.classList.toggle('on', ghostOn);
+    ghBtn.setAttribute('aria-pressed', ghostOn ? 'true' : 'false');
+    ghBtn.title = ghostOn ? '自己ベストの走りを並走させる（入）' : 'ゴースト（切）';
+  }
+  if (ghBtn){
+    ghBtn.addEventListener('click', function(){
+      ghostOn = !ghostOn;
+      try { localStorage.setItem('wadachi.ghostOn', ghostOn ? '1' : '0'); } catch(e){}
+      syncGh();
+    });
+  }
 
   var volSl = document.getElementById('volSl');
   if (volSl && window.WADACHI_AUDIO){
@@ -1388,6 +1467,12 @@
 
     checkGate();
 
+    // ゴーストのために位置を控える（0.05秒ごと）
+    while (rec.length / 4 * GH_DT <= time && rec.length < 4 * 4000) {
+      rec.push(Math.round(car.x*10)/10, Math.round(car.y*10)/10,
+               Math.round(car.ang*1000)/1000, idx);
+    }
+
     // ゴール（関門を全部くぐっているか確認する）
     if (idx >= TRACK.length - 3) finish(GATES.length - nextGate);
 
@@ -1473,7 +1558,41 @@
     }
     ctx.globalAlpha = 1;
 
+    drawGhost();
     drawCar();
+    drawGhostGap();
+  }
+
+  function drawGhost(){
+    if (!ghostOn || st !== 'play') return;
+    var g = ghostPose(time);
+    if (!g) return;
+    var x = g.x - camX, y = g.y - camY;
+    if (x < -60 || x > W+60 || y < -60 || y > H+60) return;
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    ctx.translate(x, y);
+    ctx.rotate(g.ang);
+    drawCarNew(ctx, GCOL, 0, false, 0, false, false);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // 手本との差。マイナスなら自分が前に出ている
+  function drawGhostGap(){
+    if (!ghostOn || st !== 'play' || !ghost) return;
+    var gt = ghostTimeAt(idx);
+    if (gt < 0) return;
+    var d = time - gt;
+    var txt = (d >= 0 ? '+' : '-') + Math.abs(d).toFixed(2);
+    ctx.save();
+    ctx.font = 'bold 11px Oxanium, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(11,12,16,0.55)';
+    ctx.fillRect(W/2 - 25, 5, 50, 14);
+    ctx.fillStyle = d <= 0 ? '#5FD3E0' : '#E0453A';
+    ctx.fillText(txt, W/2, 15.5);
+    ctx.restore();
   }
 
   function drawGate(s, color){
@@ -1752,6 +1871,7 @@ function shade(hex, k){
 
   function boot(saved){
     loadBest();
+  syncGh();
     if (saved && saved.best && (!best || saved.best < best)) { best = saved.best; saveBest(); }
     layout();
     setCourse(0);
