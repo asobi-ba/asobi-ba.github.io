@@ -226,6 +226,7 @@
     border:1px solid rgba(196,192,182,.22);border-radius:2px;padding:3px 6px;margin-left:4px;
   }
   .ghb.on{ color:var(--cool);border-color:rgba(95,211,224,.55); }
+  .ghb.top{ color:#E8C07A;border-color:rgba(232,192,122,.6); }
   .vol input{
     -webkit-appearance:none;appearance:none;width:74px;height:3px;
     background:rgba(196,192,182,.3);border-radius:2px;outline:none;cursor:pointer;
@@ -964,6 +965,9 @@
     btn.addEventListener('click', function(){
       var nm = (inp.value || '').trim();
       if (!nm){ msg.textContent = '名前を入れてください'; msg.className = 'lb-msg ng'; inp.focus(); return; }
+      // 送る前に覚える。通信が失敗しても名前が消えないように
+      myName = nm;
+      try { localStorage.setItem(KEY, myName); } catch(e){}
       btn.disabled = true;
       msg.className = 'lb-msg';
       msg.textContent = '送っています…';
@@ -1039,7 +1043,8 @@
   var ACCEL = 155, MAXS = 244, TURN = 3.8;
   var GRIP = 2.0;        // 横に戻ろうとする強さ（小さいほど滑る）
   var SPEEDSLIP = 0.62;  // 速いときにどれだけグリップが落ちるか
-  var SLIDEMAX = 235;    // これ以上流れるとグリップが抜ける（スピン）
+  var PEAK = 105;        // 踏ん張りがいちばん強くなる横速度。ここを越えると落ちる
+  var TAIL = 0.30;       // 振りきったときに残る踏ん張り（0だと戻らなくなる）
   var STEERUP = 8.0;     // ハンドルが切れていく速さ（大きいほど即座に最大舵角）
   var STEERDN = 11.0;    // 戻す速さ
   var HOLD = 0.58;       // ハンドルを切り続けたとき、どれだけ後ろが出るか（荷重移動）
@@ -1174,8 +1179,12 @@
   var ghost = null;                    // 手本にする記録
   var ghosts = [null,null,null];
   var ghostT = [0,0,0];                // その手本を出したときのタイム
-  var ghostOn = true;
-  var GCOL = { body:'#5FD3E0', lampCore:'#CFEFF5' };
+  // 0=切 1=自己ベスト 2=順位表1位
+  var ghostMode = 1;
+  var topG = [null,null,null];         // 順位表1位の走り {name, score, arr}
+  var GAPI = 'https://game-scores.pdylplplp.workers.dev';
+  var GCOL  = { body:'#5FD3E0', lampCore:'#CFEFF5' };   // 自分のベスト
+  var GCOL2 = { body:'#E8C07A', lampCore:'#FFEBC4' };   // 1位の人
 
   function loadGhosts(){
     for (var i=0;i<3;i++){
@@ -1186,7 +1195,11 @@
         ghostT[i] = parseFloat(localStorage.getItem('wadachi.ghostT.' + i)) || 0;
       } catch(e){ ghosts[i] = null; ghostT[i] = 0; }
     }
-    try { ghostOn = localStorage.getItem('wadachi.ghostOn') !== '0'; } catch(e){}
+    try {
+      var m = localStorage.getItem('wadachi.ghostMode');
+      if (m !== null) ghostMode = Math.max(0, Math.min(2, parseInt(m, 10) || 0));
+      else if (localStorage.getItem('wadachi.ghostOn') === '0') ghostMode = 0;
+    } catch(e){}
   }
   function saveGhost(t){
     ghosts[courseIdx] = rec.slice();
@@ -1196,6 +1209,18 @@
       localStorage.setItem('wadachi.ghostT.' + courseIdx, String(ghostT[courseIdx]));
     } catch(e){}                       // 入りきらなくても走行そのものは止めない
   }
+  // いま並走させる手本と、その色・持ち主
+  function curGhost(){
+    if (ghostMode === 2) {
+      var t = topG[courseIdx];
+      return t ? { arr: t.arr, col: GCOL2, who: t.name, time: t.score } : null;
+    }
+    if (ghostMode === 1 && ghosts[courseIdx]) {
+      return { arr: ghosts[courseIdx], col: GCOL, who: '自己ベスト', time: ghostT[courseIdx] };
+    }
+    return null;
+  }
+
   // 手本の t 秒時点の姿。終わっていれば null
   function ghostPose(t){
     if (!ghost) return null;
@@ -1222,6 +1247,66 @@
       if (ghost[mid*4 + 3] < gi) lo = mid + 1; else hi = mid;
     }
     return lo * GH_DT;
+  }
+
+  // 送るときは整数だけの文字列にする（向きは100倍して整数に）
+  function packRec(a){
+    var o = [];
+    for (var i = 0; i < a.length; i += 4){
+      o.push(Math.round(a[i]), Math.round(a[i+1]), Math.round(a[i+2]*100), a[i+3]);
+    }
+    return o.join(',');
+  }
+  function unpackRec(str){
+    if (typeof str !== 'string' || !str) return null;
+    var p = str.split(','), o = [];
+    if (p.length < 8 || p.length % 4) return null;
+    for (var i = 0; i < p.length; i += 4){
+      var x = parseFloat(p[i]), y = parseFloat(p[i+1]);
+      var g = parseFloat(p[i+2]), k = parseInt(p[i+3], 10);
+      if (!isFinite(x) || !isFinite(y) || !isFinite(g) || !isFinite(k)) return null;
+      o.push(x, y, g/100, k);
+    }
+    return o;
+  }
+  function myName(){
+    try { return localStorage.getItem('score.name') || ''; } catch(e){ return ''; }
+  }
+  function gameKey(){ return 'wadachi-' + (courseIdx + 1); }
+
+  // 順位表1位の走りを取りに行く（つながらなくても遊べる）
+  function fetchTop(i){
+    var key = 'wadachi-' + (i + 1);
+    try {
+      fetch(GAPI + '/ghost?game=' + encodeURIComponent(key), { cache:'no-store' })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){
+          if (!d || d.none) { topG[i] = null; return; }
+          var arr = unpackRec(d.data);
+          topG[i] = arr ? { name: d.name, score: d.score, arr: arr } : null;
+          if (i === courseIdx && (st === 'title' || st === 'done')) showTitle2();
+        })
+        .catch(function(){});
+    } catch(e){}
+  }
+  // 1位より速ければ走りを預ける
+  function sendGhost(t){
+    var nm = myName();
+    if (!nm) return;                       // 名前を出していない人は送らない
+    var cur = topG[courseIdx];
+    if (cur && t >= cur.score) return;     // 1位より遅いなら送らない
+    var data = packRec(rec);
+    if (!data || data.length > 120000) return;
+    var key = gameKey(), i = courseIdx;
+    try {
+      fetch(GAPI + '/ghost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game: key, name: nm, score: t, data: data })
+      }).then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){ if (d && d.ok) fetchTop(i); })
+        .catch(function(){});
+    } catch(e){}
   }
 
   var bests = [0,0,0];
@@ -1287,6 +1372,7 @@
     // 手本がまだ無ければ、ベスト更新でなくてもこの1本を手本にする。
     // そうしないと、すでにベストを持っている人には永久にゴーストが出ない。
     if (isNew || !ghosts[courseIdx]) { saveGhost(time); ghost = ghosts[courseIdx]; }
+    sendGhost(time);
     if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(isNew); }
     veilTitle.textContent = 'GOAL';
     veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
@@ -1307,6 +1393,7 @@
     buildTrack();
     best = bests[courseIdx];
     ghost = ghosts[courseIdx];
+    if (!topG[courseIdx]) fetchTop(courseIdx);
     var btns = tabsEl.getElementsByTagName('button');
     for (var k=0;k<btns.length;k++) btns[k].classList.toggle('on', k === courseIdx);
     prev = {};
@@ -1319,15 +1406,18 @@
   });
 
   var ghBtn = document.getElementById('ghBtn');
+  var GHLABEL = ['GHOST 切', 'GHOST 自己', 'GHOST 1位'];
   function syncGh(){
     if (!ghBtn) return;
-    ghBtn.classList.toggle('on', ghostOn);
-    ghBtn.setAttribute('aria-pressed', ghostOn ? 'true' : 'false');
-    ghBtn.title = ghostOn ? '自己ベストの走りを並走させる（入）' : 'ゴースト（切）';
+    ghBtn.textContent = GHLABEL[ghostMode];
+    ghBtn.classList.toggle('on', ghostMode !== 0);
+    ghBtn.classList.toggle('top', ghostMode === 2);
+    ghBtn.setAttribute('aria-pressed', ghostMode !== 0 ? 'true' : 'false');
+    ghBtn.title = ['ゴーストを出さない', '自己ベストと並走', '順位表1位と勝負'][ghostMode];
   }
   function toggleGh(){
-    ghostOn = !ghostOn;
-    try { localStorage.setItem('wadachi.ghostOn', ghostOn ? '1' : '0'); } catch(e){}
+    ghostMode = (ghostMode + 1) % 3;
+    try { localStorage.setItem('wadachi.ghostMode', String(ghostMode)); } catch(e){}
     syncGh();
     if (st === 'title' || st === 'done') showTitle2();
   }
@@ -1423,10 +1513,14 @@
     if (fwd < 0) fwd = 0;
 
     // 横のグリップ
-    var gBase = (Math.abs(lat) > SLIDEMAX ? 1.6 : GRIP);
+    // タイヤの踏ん張りは PEAK でいちばん強く、そこを越えると落ちていく。
+    // 横速度に比例させ続けると、大きく振るほど強く引き戻されて速くなってしまう。
     var fast = 1 - SPEEDSLIP * Math.min(1, sp / MAXS);
-    var grip = gBase * fast * (1 - HOLD*holdT) * (onRoad ? 1 : 0.5);
-    lat -= lat * Math.min(1, grip * dt);
+    var grip = GRIP * fast * (1 - HOLD*holdT) * (onRoad ? 1 : 0.5);
+    var la = Math.abs(lat);
+    var curve = la <= PEAK ? la : Math.max(PEAK * TAIL, PEAK * PEAK / la);
+    var dLat = Math.min(la, grip * curve * dt);
+    lat -= (lat > 0 ? dLat : -dLat);
 
     car.vx = fx*fwd + rx*lat;
     car.vy = fy*fwd + ry*lat;
@@ -1598,13 +1692,22 @@
     if (e) e.textContent = ghostLine();
   }
   function ghostLine(){
-    if (!ghosts[courseIdx]) return 'ゴースト：まだ記録なし（1本 完走すると記録されます）';
-    var t = ghostT[courseIdx] ? ' ' + fmt(ghostT[courseIdx]) : '';
-    return 'ゴースト：' + (ghostOn ? '入' : '切') + t + '　（画面下の GHOST／G キーで切替）';
+    var tail = '　（画面下の GHOST／G キーで 切→自己→1位）';
+    if (ghostMode === 0) return 'ゴースト：切' + tail;
+    if (ghostMode === 2) {
+      var t = topG[courseIdx];
+      if (!t) return 'ゴースト：1位と勝負 — まだ誰も記録を出していません' + tail;
+      return 'ゴースト：1位と勝負　' + t.name + '　' + fmt(t.score) + tail;
+    }
+    if (!ghosts[courseIdx]) return 'ゴースト：自己ベスト — まだ記録なし（1本 完走すると記録されます）' + tail;
+    return 'ゴースト：自己ベスト　' + fmt(ghostT[courseIdx]) + tail;
   }
 
   function drawGhost(){
-    if (!ghostOn || st !== 'play') return;
+    if (st !== 'play') return;
+    var c = curGhost();
+    if (!c) return;
+    ghost = c.arr;
     var g = ghostPose(time);
     if (!g) return;
     var x = g.x - camX, y = g.y - camY;
@@ -1613,14 +1716,17 @@
     ctx.globalAlpha = 0.34;
     ctx.translate(x, y);
     ctx.rotate(g.ang);
-    drawCarNew(ctx, GCOL, 0, false, 0, false, false);
+    drawCarNew(ctx, c.col, 0, false, 0, false, false);
     ctx.restore();
     ctx.globalAlpha = 1;
   }
 
   // 手本との差。マイナスなら自分が前に出ている
   function drawGhostGap(){
-    if (!ghostOn || st !== 'play' || !ghost) return;
+    if (st !== 'play') return;
+    var c = curGhost();
+    if (!c) return;
+    ghost = c.arr;
     var gt = ghostTimeAt(idx);
     if (gt < 0) return;
     var d = time - gt;
@@ -1630,7 +1736,7 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(11,12,16,0.55)';
     ctx.fillRect(W/2 - 25, 5, 50, 14);
-    ctx.fillStyle = d <= 0 ? '#5FD3E0' : '#E0453A';
+    ctx.fillStyle = d <= 0 ? c.col.body : '#E0453A';
     ctx.fillText(txt, W/2, 15.5);
     ctx.restore();
   }

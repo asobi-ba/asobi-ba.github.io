@@ -417,6 +417,9 @@
     btn.addEventListener('click', function(){
       var nm = (inp.value || '').trim();
       if (!nm){ msg.textContent = '名前を入れてください'; msg.className = 'lb-msg ng'; inp.focus(); return; }
+      // 送る前に覚える。通信が失敗しても名前が消えないように
+      myName = nm;
+      try { localStorage.setItem(KEY, myName); } catch(e){}
       btn.disabled = true;
       msg.className = 'lb-msg';
       msg.textContent = '送っています…';
