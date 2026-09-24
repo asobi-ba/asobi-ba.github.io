@@ -559,7 +559,11 @@
   var noiseSrc = null;
   var sqIn = null, sqBp = [], sqTrem = null, sqJit = [];
   var roarIn = null, roarBp = null;
-  var engG = null, engO = [], engF = null;
+  var engG = null, engO = [], engF = null, engMul = [];
+  var engNz = null, engNzF = null, engWh = null, engWhG = null;
+  var engLoad = 0, engPrevSp = 0;
+  // 変速機のつもり。速度のこの割合で次の段に入る（回転が落ちてまた上がる）
+  var GEARS = [0, 0.15, 0.29, 0.46, 0.68];
 
   function makeLive(){
     noiseSrc = actx.createBufferSource();
@@ -576,8 +580,9 @@
     sqTrem = actx.createGain(); sqTrem.gain.value = 0.90;
     sqTrem.connect(seG);
 
-    // Qを上げすぎると雑音でなく音程になる＝歌声に聞こえる。ざらつく程度に留める
-    var Qs = [10, 12, 7], gs = [0.70, 0.52, 0.32];
+    // Qが低いと音程が消えて「シー」、高すぎると歌になる。
+    // 1本目だけ強く尖らせて音程を作り、2本目で厚み、3本目は広く取って空気の音にする。
+    var Qs = [30, 18, 6], gs = [1.40, 0.49, 0.35];
     for (var i = 0; i < 3; i++){
       var bp = actx.createBiquadFilter();
       bp.type = 'bandpass';
@@ -615,18 +620,39 @@
     try { noiseSrc.start(); } catch(e){}
 
     // --- エンジン ---
+    // 固定のフィルターで上を切ると気の抜けた音になる。回転に合わせて開かせる。
     engG = actx.createGain(); engG.gain.value = 0;
     engF = actx.createBiquadFilter();
-    engF.type = 'lowpass'; engF.frequency.value = 620; engF.Q.value = 0.8;
+    engF.type = 'lowpass'; engF.frequency.value = 900; engF.Q.value = 2.0;
     engG.connect(engF); engF.connect(seG);
-    for (var j = 0; j < 2; j++){
+    // 基音だけだと薄い。下の胴鳴り・排気の歯切れ・上の倍音を重ねて厚みを出す
+    var PARTS = [
+      { type:'sawtooth', mul:0.5, det:   0, g:0.45 },
+      { type:'sawtooth', mul:1.0, det: -10, g:1.00 },
+      { type:'sawtooth', mul:1.0, det:  10, g:1.00 },
+      { type:'square',   mul:2.0, det:   6, g:0.30 },
+      { type:'sawtooth', mul:3.0, det:  -6, g:0.16 }
+    ];
+    for (var j = 0; j < PARTS.length; j++){
       var o = actx.createOscillator();
-      o.type = 'sawtooth'; o.frequency.value = 70;
-      o.detune.value = j ? 11 : -11;
-      o.connect(engG);
+      o.type = PARTS[j].type; o.frequency.value = 70 * PARTS[j].mul;
+      o.detune.value = PARTS[j].det;
+      var pg = actx.createGain(); pg.gain.value = PARTS[j].g;
+      o.connect(pg); pg.connect(engG);
       try { o.start(); } catch(e){}
-      engO.push(o);
+      engO.push(o); engMul.push(PARTS[j].mul);
     }
+    // 排気のざらつき
+    engNz = actx.createGain(); engNz.gain.value = 0;
+    noiseSrc.connect(engNz);
+    engNzF = actx.createBiquadFilter();
+    engNzF.type = 'bandpass'; engNzF.frequency.value = 1200; engNzF.Q.value = 1.6;
+    engNz.connect(engNzF); engNzF.connect(seG);
+    // 過給機の鳴き。回転が上がったときだけ薄くのせる
+    engWh = actx.createOscillator(); engWh.type = 'sine'; engWh.frequency.value = 3000;
+    engWhG = actx.createGain(); engWhG.gain.value = 0;
+    engWh.connect(engWhG); engWhG.connect(seG);
+    try { engWh.start(); } catch(e){}
   }
 
   // ---------- 外から呼ぶもの ----------
@@ -636,7 +662,15 @@
     if (!AC) return;
     try { actx = new AC(); } catch(e){ actx = null; return; }
     master = actx.createGain(); master.gain.value = vol * 0.55;
-    master.connect(actx.destination);
+    // 曲・エンジン・鳴きが同時に大きくなると振り切れる。念のため頭を押さえる
+    var lim = null;
+    try {
+      lim = actx.createDynamicsCompressor();
+      lim.threshold.value = -4; lim.knee.value = 6; lim.ratio.value = 12;
+      lim.attack.value = 0.003; lim.release.value = 0.12;
+    } catch(e){ lim = null; }
+    if (lim){ master.connect(lim); lim.connect(actx.destination); }
+    else master.connect(actx.destination);
     musicG = actx.createGain(); musicG.gain.value = 0.42; musicG.connect(master);
     seG = actx.createGain(); seG.gain.value = 0.5; seG.connect(master);
 
@@ -683,6 +717,9 @@
       sqIn.gain.setTargetAtTime(0, actx.currentTime, 0.05);
       roarIn.gain.setTargetAtTime(0, actx.currentTime, 0.05);
       engG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      engNz.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      engWhG.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      engLoad = 0; engPrevSp = 0;
     },
     pause: function(on){
       if (!ready) return;
@@ -691,6 +728,8 @@
         sqIn.gain.setTargetAtTime(0, actx.currentTime, 0.04);
         roarIn.gain.setTargetAtTime(0, actx.currentTime, 0.04);
         engG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
+        engNz.gain.setTargetAtTime(0, actx.currentTime, 0.04);
+        engWhG.gain.setTargetAtTime(0, actx.currentTime, 0.04);
       }
     },
     count: function(n){
@@ -719,19 +758,37 @@
       var want = 0;
       if (run && sliding) want = Math.min(0.85, 0.22 + slip * 1.5) * Math.min(1, sp / 150);
       sqIn.gain.setTargetAtTime(want, t, 0.030);
-      var f0 = 3900 + Math.min(1.0, slip * 2.2) * 1500 + fast * 900;
+      var f0 = 4600 + Math.min(1.0, slip * 2.2) * 1600 + fast * 900;
       sqBp[0].frequency.setTargetAtTime(f0, t, 0.05);
-      sqBp[1].frequency.setTargetAtTime(f0 * 1.23, t, 0.05);
-      sqBp[2].frequency.setTargetAtTime(f0 * 1.52, t, 0.05);
+      sqBp[1].frequency.setTargetAtTime(f0 * 1.49, t, 0.05);
+      sqBp[2].frequency.setTargetAtTime(f0 * 1.90, t, 0.05);
 
       // 路面のうなり：速度だけで決まる
       roarIn.gain.setTargetAtTime(run ? 0.07 * fast : 0, t, 0.09);
       roarBp.frequency.setTargetAtTime(270 + fast * 190, t, 0.09);
 
-      // エンジン
-      var ef = 62 + fast * 95;
-      for (var i = 0; i < engO.length; i++) engO[i].frequency.setTargetAtTime(ef, t, 0.06);
-      engG.gain.setTargetAtTime(run ? 0.10 : 0, t, 0.08);
+      // エンジン：速度にまっすぐ比例させると間延びするので、変速を模して回転を上下させる
+      var gi = 0;
+      while (gi < GEARS.length - 1 && fast >= GEARS[gi + 1]) gi++;
+      var glo = GEARS[gi], ghi = (gi + 1 < GEARS.length) ? GEARS[gi + 1] : 1.0;
+      var rev = 0.30 + 0.70 * Math.min(1, Math.max(0, (fast - glo) / Math.max(0.01, ghi - glo)));
+      // 踏み込み具合は速度の増え方から見る。滑っている間は踏んでいるものとして扱う
+      var dsp = (sp - engPrevSp) * 60;
+      engPrevSp = sp;
+      var load = Math.max(0, Math.min(1, dsp / 90));
+      if (sliding) load = Math.max(load, 0.55);
+      engLoad += (load - engLoad) * 0.15;
+
+      var ef = 42 + rev * 138;
+      for (var i = 0; i < engO.length; i++)
+        engO[i].frequency.setTargetAtTime(ef * engMul[i], t, 0.05);
+      engF.frequency.setTargetAtTime(320 + rev * 2400 + engLoad * 1100, t, 0.07);
+      engG.gain.setTargetAtTime(run ? (0.072 + engLoad * 0.064 + rev * 0.038) : 0, t, 0.08);
+      engNz.gain.setTargetAtTime(run ? (0.018 + engLoad * 0.040) : 0, t, 0.08);
+      engNzF.frequency.setTargetAtTime(700 + rev * 1700, t, 0.07);
+      engWh.frequency.setTargetAtTime(2400 + rev * 3200, t, 0.07);
+      var wh = rev > 0.55 ? (rev - 0.55) / 0.45 : 0;
+      engWhG.gain.setTargetAtTime(run ? 0.014 * wh * wh * (0.4 + engLoad * 0.6) : 0, t, 0.09);
     },
     setVol: function(v){
       vol = Math.max(0, Math.min(1, v));
