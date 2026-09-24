@@ -1043,6 +1043,7 @@
   var ACCEL = 155, MAXS = 244, TURN = 3.8;
   var GRIP = 2.0;        // 横に戻ろうとする強さ（小さいほど滑る）
   var SPEEDSLIP = 0.62;  // 速いときにどれだけグリップが落ちるか
+  var BACKMAX = 85;      // 逆を向いて流れるときに許す「後ろ向きの速度」の上限
   var PEAK = 105;        // 踏ん張りがいちばん強くなる横速度。ここを越えると落ちる
   var TAIL = 0.30;       // 振りきったときに残る踏ん張り（0だと戻らなくなる）
   var STEERUP = 8.0;     // ハンドルが切れていく速さ（大きいほど即座に最大舵角）
@@ -1534,7 +1535,10 @@
     var loss = Math.abs(lat) * SCRUB * dt;
     var take = Math.min(Math.max(0, fwd), loss);
     fwd -= take;
-    if (fwd < 0) fwd = 0;
+    // 90度を超えて流れると、前向きの速度はマイナス（車が進行方向と逆を向いている）。
+    // このときエンジンは進行方向に対して逆向きに押すので、加速ではなく減速になる。
+    // ここを 0 で止めるとその減速が丸ごと消え、90度で張り付いて振り回すほど速くなる。
+    if (fwd < -BACKMAX) fwd = -BACKMAX;
     var rest = loss - take;
     if (rest > 0){
       var cut = Math.min(Math.abs(lat), rest);
