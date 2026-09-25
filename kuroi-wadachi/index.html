@@ -1053,6 +1053,10 @@
   var STEERDN = 11.0;    // 戻す速さ
   var HOLD = 0.58;       // ハンドルを切り続けたとき、どれだけ後ろが出るか（荷重移動）
   var SCRUB = 0.62;      // 滑るとスピードが落ちる量。ブレーキの代わり
+  // 一次式のままだと、角度をつけるほど推進と打ち消し合って前に出ない。
+  // 山までは弱く削って前に出し、山を越えたぶんは強く削る。
+  var SCRUBMILD = 0.55;  // 山までの削り方
+  var SCRUBHARD = 1.60;  // 山を越えたぶんの削り方
   var HALF = 44;         // 道のはばの半分（道はば88 ＝ 車 約3.4台ぶん）
   var WALL = 28;         // 路肩の外、ここまで出ると壁
 
@@ -1535,7 +1539,9 @@
     // 前向きの速度からだけ引くと、真横を向いた（前向きが0の）ときに減速が
     // 効かなくなり、勢いを保ったまま向きだけ戻って かえって速くなる。
     // 前向きで引ききれないぶんは、横向きの勢いから削る。
-    var loss = Math.abs(lat) * SCRUB * dt;
+    var la0 = Math.abs(lat);
+    var loss = (la0 <= PEAK ? la0 * SCRUB * SCRUBMILD
+                            : PEAK * SCRUB * SCRUBMILD + (la0 - PEAK) * SCRUB * SCRUBHARD) * dt;
     var take = Math.min(Math.max(0, fwd), loss);
     fwd -= take;
     // 90度を超えて流れると、前向きの速度はマイナス（車が進行方向と逆を向いている）。
