@@ -1066,6 +1066,18 @@
 
   // ---------- コース（直線と、半径を指定したカーブの列）----------
   // S=直線(長さ) / L=左カーブ(半径,角度) / R=右カーブ(半径,角度)
+  // 峠の起伏。距離 d から高さを決める（コースの形はいじらない）。
+  //   高さ   = -下り勾配*d + 大きな波 + 小さな波
+  //   勾配 g = 下り向きを + とする（下りで押され、上りで抑えられる）
+  //   dg     = 勾配の変わり方。頂上で荷重が抜け、谷で食いつく
+  var HILL = [
+    { base:0.055, a1:11, l1:210, a2:4.5, l2:83  },   // 杉ノ沢
+    { base:0.045, a1:16, l1:340, a2:5.5, l2:120 },   // 鷹ノ巣
+    { base:0.070, a1:8,  l1:150, a2:3.5, l2:62  }    // 蛇骨
+  ];
+  var GRAV  = 190;       // 坂がどれだけ押す／抑えるか
+  var CREST = 350;       // 頂上で荷重が抜ける強さ
+
   var COURSES = [
     { name:'杉ノ沢', tag:'バランス', segs:[
       ['S',300],['L',175,55],['S',150],['R',62,168],['S',230],
@@ -1092,8 +1104,15 @@
     var COURSE = COURSES[courseIdx].segs;
     TRACK.length = 0;
     var x = 0, y = 0, a = 0, d = 0;      // a: 進行方向（0=上, 正=右回り）
+    var HL = HILL[courseIdx];
     function push(){
-      TRACK.push({ x:x, y:y, a:a, d:d, nx:Math.cos(a), ny:Math.sin(a) });
+      var p1 = d / HL.l1, p2 = d / HL.l2 + 2.1;
+      TRACK.push({
+        x:x, y:y, a:a, d:d, nx:Math.cos(a), ny:Math.sin(a),
+        h: -HL.base*d + HL.a1*Math.sin(p1) + HL.a2*Math.sin(p2),
+        g: HL.base - (HL.a1/HL.l1)*Math.cos(p1) - (HL.a2/HL.l2)*Math.cos(p2),
+        dg: (HL.a1/(HL.l1*HL.l1))*Math.sin(p1) + (HL.a2/(HL.l2*HL.l2))*Math.sin(p2)
+      });
     }
     push();
     for (var i=0;i<COURSE.length;i++){
@@ -1323,7 +1342,7 @@
 
   // 走り方（タイヤの踏ん張りの式）を変えたので、古い決まりで出した記録は
   // 一度だけ消す。名前と音量は残す。
-  var RULES = '4';   // 最高速180km/h＋加速を元に戻した。前の記録は比べられない
+  var RULES = '5';   // 峠のアップダウンを入れた。前の記録は比べられない
   function resetIfOldRules(){
     try {
       if (localStorage.getItem('wadachi.rules') === RULES) return false;
@@ -1542,6 +1561,8 @@
     var drv = la1 <= PEAK ? la1 / PEAK
                           : Math.max(0, (PEAK * 1.5 - la1) / (PEAK * 0.5));
     fwd += ACCEL * (1 + DRIVE * drv) * dt;
+    // 坂：下りは押され、上りは抑えられる
+    fwd += GRAV * sN.g * dt;
     fwd -= fwd * (onRoad ? 0.16 : 1.1) * dt;
     if (fwd > MAXS) fwd = MAXS;
     // 滑ったぶんの減速＝これが唯一の減速。
@@ -1567,7 +1588,9 @@
     // タイヤの踏ん張りは PEAK でいちばん強く、そこを越えると落ちていく。
     // 横速度に比例させ続けると、大きく振るほど強く引き戻されて速くなってしまう。
     var fast = 1 - SPEEDSLIP * Math.min(1, sp / MAXS);
-    var grip = GRIP * fast * (1 - HOLD*holdT) * (onRoad ? 1 : 0.5);
+    // 荷重：頂上では抜けて滑りやすく、谷では沈んで 食いつく
+    var load = Math.max(0.60, Math.min(1.40, 1 - CREST * sN.dg));
+    var grip = GRIP * fast * (1 - HOLD*holdT) * (onRoad ? 1 : 0.5) * load;
     var la = Math.abs(lat);
     var curve = la <= PEAK ? la : Math.max(PEAK * TAIL, PEAK * PEAK / la);
     var dLat = Math.min(la, grip * curve * dt);
@@ -1696,6 +1719,25 @@
     ctx.setLineDash([]);
   }
 
+  // 路面に薄く色を重ねて坂を見せる。全部の点を塗ると重いので、まばらに短い線を引く。
+  function hillTint(runs){
+    ctx.lineWidth = HALF*2; ctx.lineCap = 'butt';
+    for (var r=0;r<runs.length;r++){
+      var run = runs[r];
+      for (var i=0;i+4<run.length;i+=4){
+        var g0 = run[i].g;
+        var al = Math.min(0.14, Math.abs(g0) * 0.9);
+        if (al < 0.045) continue;   // ゆるい坂は塗らない（路面の色を変えすぎない）
+        ctx.strokeStyle = (g0 >= 0 ? 'rgba(95,211,224,' : 'rgba(240,135,58,') + al.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.moveTo(run[i].x - camX, run[i].y - camY);
+        ctx.lineTo(run[i+4].x - camX, run[i+4].y - camY);
+        ctx.stroke();
+      }
+    }
+    ctx.lineCap = 'round';
+  }
+
   function draw(){
     ctx.fillStyle = COL.ground;
     ctx.fillRect(0,0,W,H);
@@ -1710,6 +1752,7 @@
     strokeRuns(runs, (HALF+WALL)*2, COL.wall);       // 路肩
     strokeRuns(runs, HALF*2 + 5, COL.edge);          // 白線
     strokeRuns(runs, HALF*2, COL.road);              // 路面
+    hillTint(runs);                                  // 坂の色づけ
 
     // 轍
     if (marks.length) {
@@ -1772,6 +1815,14 @@
     ctx.fillStyle = 'rgba(232,228,216,0.50)';
     ctx.font = 'bold 9px Oxanium, monospace';
     ctx.fillText('KM/H', W - 12, H - 33);
+    // 勾配（下りは＋・水色／上りは－・橙）
+    var gr = TRACK[idx] ? TRACK[idx].g : 0;
+    var pc = Math.round(gr * 100);
+    ctx.fillStyle = 'rgba(11,12,16,0.55)';
+    ctx.fillRect(W - 74, H - 70, 68, 21);
+    ctx.fillStyle = pc >= 0 ? '#5FD3E0' : '#F0873A';
+    ctx.font = 'bold 13px Oxanium, monospace';
+    ctx.fillText((pc >= 0 ? '▼ ' : '▲ ') + Math.abs(pc) + '%', W - 12, H - 55);
     ctx.fillStyle = sliding ? '#FFC27A' : '#E8E4D8';
     ctx.font = 'bold 24px Oxanium, monospace';
     ctx.fillText(String(kmh), W - 12, H - 12);
