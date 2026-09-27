@@ -1735,6 +1735,36 @@
     ctx.setLineDash([]);
   }
 
+  // 路面に薄く色を重ねて坂を見せる。
+  // 塗り分けの境目は「コース上の走行距離」で決める。画面に映っている範囲の
+  // 先頭を基準にすると、カメラが動くたびに境目がずれて模様が路面を這って見える。
+  var TINTN = 3;        // 何刻みで塗り分けるか（7×3＝21ごと）
+  function tintStart(run){
+    for (var i = 0; i < run.length; i++){
+      if (Math.round(run[i].d / STEP) % TINTN === 0) return i;
+    }
+    return run.length;
+  }
+  function hillTint(runs){
+    ctx.lineWidth = HALF*2; ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+    for (var r = 0; r < runs.length; r++){
+      var run = runs[r];
+      for (var i = tintStart(run); i + TINTN < run.length; i += TINTN){
+        var g0 = (run[i].g + run[i+TINTN].g) / 2;
+        var al = Math.min(0.13, Math.abs(g0) * 0.75);
+        if (al < 0.012) continue;        // ほぼ平らなところは塗らない（塗っても見えない）
+        ctx.strokeStyle = (g0 >= 0 ? 'rgba(95,211,224,' : 'rgba(240,135,58,') + al.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.moveTo(run[i].x - camX, run[i].y - camY);
+        for (var k = 1; k <= TINTN; k++){
+          ctx.lineTo(run[i+k].x - camX, run[i+k].y - camY);
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.lineCap = 'round';
+  }
+
   function draw(){
     ctx.fillStyle = COL.ground;
     ctx.fillRect(0,0,W,H);
@@ -1749,6 +1779,7 @@
     strokeRuns(runs, (HALF+WALL)*2, COL.wall);       // 路肩
     strokeRuns(runs, HALF*2 + 5, COL.edge);          // 白線
     strokeRuns(runs, HALF*2, COL.road);              // 路面
+    hillTint(runs);                                  // 坂の色づけ
 
     // 轍
     if (marks.length) {
