@@ -1134,9 +1134,25 @@
       }
     }
     TRACKLEN = d;
+    buildProfile();
     buildCheckpoints();
   }
   buildTrack();
+
+  // コース全体の高さの形。毎コマ作ると重いので、コースを組むときに一度だけ。
+  var PROFILE = [];
+  function buildProfile(){
+    PROFILE = [];        // 宣言より先に呼ばれるので、入れ直す
+    var N = 64, lo = 1e9, hi = -1e9, i, t;
+    for (i = 0; i < N; i++){
+      t = TRACK[Math.min(TRACK.length-1, Math.round(i/(N-1)*(TRACK.length-1)))].h;
+      PROFILE.push(t);
+      if (t < lo) lo = t;
+      if (t > hi) hi = t;
+    }
+    var sp2 = Math.max(1, hi - lo);
+    for (i = 0; i < N; i++) PROFILE[i] = (PROFILE[i] - lo) / sp2;   // 0〜1 に直す
+  }
 
   // 車に一番近いコース上の点を、前回の位置の近くから探す
   // 現在地は「前のコマの位置のすぐ近く」からしか探さない。
@@ -1719,25 +1735,6 @@
     ctx.setLineDash([]);
   }
 
-  // 路面に薄く色を重ねて坂を見せる。全部の点を塗ると重いので、まばらに短い線を引く。
-  function hillTint(runs){
-    ctx.lineWidth = HALF*2; ctx.lineCap = 'butt';
-    for (var r=0;r<runs.length;r++){
-      var run = runs[r];
-      for (var i=0;i+4<run.length;i+=4){
-        var g0 = run[i].g;
-        var al = Math.min(0.14, Math.abs(g0) * 0.9);
-        if (al < 0.045) continue;   // ゆるい坂は塗らない（路面の色を変えすぎない）
-        ctx.strokeStyle = (g0 >= 0 ? 'rgba(95,211,224,' : 'rgba(240,135,58,') + al.toFixed(3) + ')';
-        ctx.beginPath();
-        ctx.moveTo(run[i].x - camX, run[i].y - camY);
-        ctx.lineTo(run[i+4].x - camX, run[i+4].y - camY);
-        ctx.stroke();
-      }
-    }
-    ctx.lineCap = 'round';
-  }
-
   function draw(){
     ctx.fillStyle = COL.ground;
     ctx.fillRect(0,0,W,H);
@@ -1752,7 +1749,6 @@
     strokeRuns(runs, (HALF+WALL)*2, COL.wall);       // 路肩
     strokeRuns(runs, HALF*2 + 5, COL.edge);          // 白線
     strokeRuns(runs, HALF*2, COL.road);              // 路面
-    hillTint(runs);                                  // 坂の色づけ
 
     // 轍
     if (marks.length) {
@@ -1786,6 +1782,7 @@
     drawCar();
     drawGhostGap();
     drawSpeed();
+    drawProfile();
   }
 
   function showTitle2(){
@@ -1802,6 +1799,40 @@
     }
     if (!ghosts[courseIdx]) return 'ゴースト：自己ベスト — まだ記録なし（1本 完走すると記録されます）' + tail;
     return 'ゴースト：自己ベスト　' + fmt(ghostT[courseIdx]) + tail;
+  }
+
+  // コースの断面図。左下に小さく出し、いまの位置に点を打つ。
+  // 路面を塗ると、画面が動くたびに模様がずれて這っているように見えるのでやめた。
+  function drawProfile(){
+    if (st === 'title' || !PROFILE || !PROFILE.length) return;
+    var x0 = 10, y0 = H - 34, w = 96, h = 24, i;
+    ctx.save();
+    ctx.fillStyle = 'rgba(11,12,16,0.55)';
+    ctx.fillRect(x0 - 4, y0 - 4, w + 8, h + 8);
+    // 山の形
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 + h);
+    for (i = 0; i < PROFILE.length; i++){
+      ctx.lineTo(x0 + w * i / (PROFILE.length - 1), y0 + h - PROFILE[i] * h);
+    }
+    ctx.lineTo(x0 + w, y0 + h);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(95,211,224,0.16)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(95,211,224,0.55)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // いまの位置
+    var u = Math.max(0, Math.min(1, idx / Math.max(1, TRACK.length - 1)));
+    var pi = u * (PROFILE.length - 1);
+    var lo2 = Math.floor(pi), hi2 = Math.min(PROFILE.length - 1, lo2 + 1);
+    var hh = PROFILE[lo2] + (PROFILE[hi2] - PROFILE[lo2]) * (pi - lo2);
+    var px = x0 + w * u, py = y0 + h - hh * h;
+    ctx.strokeStyle = 'rgba(232,228,216,0.30)';
+    ctx.beginPath(); ctx.moveTo(px, y0); ctx.lineTo(px, y0 + h); ctx.stroke();
+    ctx.fillStyle = '#F0873A';
+    ctx.beginPath(); ctx.arc(px, py, 2.6, 0, 7); ctx.fill();
+    ctx.restore();
   }
 
   // 速さは画面の右下に出す（盤の外より、走っている画の中のほうが見やすい）
