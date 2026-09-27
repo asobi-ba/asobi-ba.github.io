@@ -1057,6 +1057,7 @@
   // 山までは弱く削って前に出し、山を越えたぶんは強く削る。
   var SCRUBMILD = 0.55;  // 山までの削り方
   var SCRUBHARD = 1.60;  // 山を越えたぶんの削り方
+  var DRIVE = 0.45;      // 角度をつけている間、駆動がどれだけ前へ出るか
   var HALF = 44;         // 道のはばの半分（道はば88 ＝ 車 約3.4台ぶん）
   var WALL = 28;         // 路肩の外、ここまで出ると壁
 
@@ -1532,7 +1533,12 @@
     var onRoad = off < 0;
 
     // 前へ
-    fwd += ACCEL * dt;
+    // 角度をつけている間は駆動が前へ出る（パワーをかけたドリフト）。
+    // 山で最大になり、そこを越えると急に効かなくなるので、振りすぎても得しない。
+    var la1 = Math.abs(lat);
+    var drv = la1 <= PEAK ? la1 / PEAK
+                          : Math.max(0, (PEAK * 1.5 - la1) / (PEAK * 0.5));
+    fwd += ACCEL * (1 + DRIVE * drv) * dt;
     fwd -= fwd * (onRoad ? 0.16 : 1.1) * dt;
     if (fwd > MAXS) fwd = MAXS;
     // 滑ったぶんの減速＝これが唯一の減速。
