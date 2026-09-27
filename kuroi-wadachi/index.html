@@ -1323,7 +1323,7 @@
 
   // 走り方（タイヤの踏ん張りの式）を変えたので、古い決まりで出した記録は
   // 一度だけ消す。名前と音量は残す。
-  var RULES = '3';   // 最高速を180km/hに上げたので、前の記録は比べられない
+  var RULES = '4';   // 最高速180km/h＋加速を元に戻した。前の記録は比べられない
   function resetIfOldRules(){
     try {
       if (localStorage.getItem('wadachi.rules') === RULES) return false;
