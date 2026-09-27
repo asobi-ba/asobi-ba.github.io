@@ -53,7 +53,7 @@
     width:34px;height:34px;padding:0;cursor:pointer;
     display:none;align-items:center;justify-content:center;
     font-family:'Zen Kaku Gothic New',system-ui,sans-serif;
-    font-size:14px;font-weight:700;line-height:1;
+    font-size:17px;font-weight:700;line-height:1;
     color:inherit;background:rgba(127,127,127,.20);
     border:1px solid rgba(127,127,127,.45);border-radius:4px;
     -webkit-tap-highlight-color:transparent;
@@ -75,7 +75,7 @@
     margin:0;font-size:clamp(17px,4.6vw,22px);font-weight:700;
     letter-spacing:.42em;text-indent:.42em;
   }
-  .masthead p{margin:2px 0 0;font-size:11px;color:var(--dim);letter-spacing:.1em}
+  .masthead p{margin:2px 0 0;font-size:13.5px;color:var(--dim);letter-spacing:.1em}
 
   .stage{flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:center;justify-content:center}
   .rig{display:inline-flex;flex-direction:column;gap:5px;max-width:100%}
@@ -83,14 +83,14 @@
   .tabs{display:flex;gap:4px}
   .tab{
     flex:1 1 0;min-width:0;
-    font-family:'Zen Kaku Gothic New',sans-serif;font-size:12px;font-weight:500;
+    font-family:'Zen Kaku Gothic New',sans-serif;font-size:14.5px;font-weight:500;
     letter-spacing:.08em;padding:6px 2px;cursor:pointer;
     color:var(--dim);background:var(--panel);
     border:1px solid var(--line);border-radius:0;
     display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.3;
   }
-  .tab b{font-weight:700;font-size:13px;color:inherit}
-  .tab i{font-style:normal;font-size:8.5px;opacity:.75}
+  .tab b{font-weight:700;font-size:16px;color:inherit}
+  .tab i{font-style:normal;font-size:10.5px;opacity:.75}
   .tab.on{color:var(--amber);border-color:var(--amber);background:rgba(240,135,58,.10)}
   .tab:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
 
@@ -100,12 +100,12 @@
     padding:6px 9px;
   }
   .dash .cell{display:flex;flex-direction:column;gap:1px;min-width:0}
-  .dash .k{font-family:'Oxanium',monospace;font-size:7.5px;letter-spacing:.2em;color:var(--dim)}
+  .dash .k{font-family:'Oxanium',monospace;font-size:9px;letter-spacing:.2em;color:var(--dim)}
   .dash .v{
-    font-family:'Oxanium',monospace;font-weight:700;font-size:16px;line-height:1;
+    font-family:'Oxanium',monospace;font-weight:700;font-size:19.5px;line-height:1;
     font-variant-numeric:tabular-nums;
   }
-  .dash .v.sm{font-size:12px}
+  .dash .v.sm{font-size:14.5px}
   .dash .drift .v{color:var(--dim);transition:color .12s ease}
   .dash.sliding .drift .v{color:var(--amber-hi)}
   .dash .sp{flex:1}
@@ -136,12 +136,12 @@
     background:rgba(5,6,10,.82);
     border:3px solid rgba(240,135,58,.7);
     box-shadow:0 0 0 6px rgba(5,6,10,.45), 0 0 30px rgba(0,0,0,.7);
-    font-family:'Oxanium',monospace;font-weight:700;font-size:60px;line-height:1;
+    font-family:'Oxanium',monospace;font-weight:700;font-size:73px;line-height:1;
     color:#FFF4E6;text-shadow:0 2px 10px rgba(0,0,0,.9);
     animation:pop .4s ease-out;
   }
   .count.go span{
-    font-size:40px;letter-spacing:.12em;text-indent:.12em;
+    font-size:49px;letter-spacing:.12em;text-indent:.12em;
     color:#8CF0AE;border-color:rgba(140,240,174,.85);
   }
   @keyframes pop{ from{ transform:scale(1.35); opacity:.2 } to{ transform:scale(1); opacity:1 } }
@@ -157,11 +157,11 @@
 
   /* ===== 順位表 ===== */
   .lb{
-    width:min(100%,320px);font-size:12px;line-height:1.5;color:inherit;
+    width:min(100%,320px);font-size:14.5px;line-height:1.5;color:inherit;
     display:flex;flex-direction:column;gap:6px;
   }
   .lb.hide{display:none}
-  .lb .lb-t{font-size:10.5px;letter-spacing:.18em;opacity:.65}
+  .lb .lb-t{font-size:13px;letter-spacing:.18em;opacity:.65}
   .lb ol{
     list-style:none;margin:0;padding:0;
     display:flex;flex-direction:column;gap:2px;
@@ -175,35 +175,35 @@
   .lb li.me .p,.lb li.me .n,.lb li.me .s{opacity:1}
   .lb .lb-form{display:flex;gap:6px;align-items:center}
   .lb .lb-form input{
-    flex:1;min-width:0;font:inherit;font-size:13px;
+    flex:1;min-width:0;font:inherit;font-size:16px;
     padding:6px 8px;box-sizing:border-box;color:inherit;
     background:rgba(127,127,127,.18);
     border:1px solid rgba(127,127,127,.5);border-radius:2px;
   }
   .lb .lb-form button{
-    font:inherit;font-size:12px;font-weight:700;white-space:nowrap;
+    font:inherit;font-size:14.5px;font-weight:700;white-space:nowrap;
     padding:7px 12px;cursor:pointer;color:inherit;
     background:rgba(127,127,127,.3);
     border:1px solid rgba(127,127,127,.55);border-radius:2px;
   }
   .lb .lb-form button:disabled{opacity:.45;cursor:default}
-  .lb .lb-msg{font-size:11px;opacity:.75;min-height:1.2em}
+  .lb .lb-msg{font-size:13.5px;opacity:.75;min-height:1.2em}
   .lb .lb-msg.ng{opacity:1;font-weight:700}
-  .lb .lb-warn{font-size:10px;opacity:.55}
+  .lb .lb-warn{font-size:12px;opacity:.55}
   .veil h2{
     margin:0;font-family:'Oxanium',monospace;font-weight:700;
     font-size:clamp(14px,4.4vw,19px);letter-spacing:.16em;color:var(--amber);
   }
-  .veil p{margin:0;font-size:12px;color:#C4C0B6;max-width:22em}
-  .veil .course{font-size:15px;font-weight:700;color:var(--text);letter-spacing:.14em}
-  .veil .course em{font-style:normal;font-size:10px;font-weight:400;color:var(--cool);letter-spacing:.1em}
+  .veil p{margin:0;font-size:14.5px;color:#C4C0B6;max-width:22em}
+  .veil .course{font-size:18.5px;font-weight:700;color:var(--text);letter-spacing:.14em}
+  .veil .course em{font-style:normal;font-size:12px;font-weight:400;color:var(--cool);letter-spacing:.1em}
   .veil .big{
-    font-family:'Oxanium',monospace;font-weight:700;font-size:34px;
+    font-family:'Oxanium',monospace;font-weight:700;font-size:41.5px;
     font-variant-numeric:tabular-nums;color:var(--text);line-height:1;
   }
-  .veil .sub{font-family:'Oxanium',monospace;font-size:9px;letter-spacing:.18em;color:var(--cool)}
+  .veil .sub{font-family:'Oxanium',monospace;font-size:11px;letter-spacing:.18em;color:var(--cool)}
   .go{
-    font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700;font-size:13px;
+    font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700;font-size:16px;
     letter-spacing:.22em;text-indent:.22em;
     padding:9px 22px;cursor:pointer;
     color:#0B0C10;background:var(--amber);border:none;
@@ -214,14 +214,14 @@
   .vol{
     position:fixed;left:10px;bottom:10px;z-index:55;
     display:flex;align-items:center;gap:6px;
-    font-family:'Oxanium',monospace;font-size:9px;letter-spacing:.14em;
+    font-family:'Oxanium',monospace;font-size:11px;letter-spacing:.14em;
     color:var(--cool);background:rgba(11,12,16,.55);
     border:1px solid rgba(196,192,182,.22);border-radius:3px;padding:5px 8px;
   }
-  .veil .gh{ color:var(--cool);font-size:11px;letter-spacing:.04em; }
+  .veil .gh{ color:var(--cool);font-size:13.5px;letter-spacing:.04em; }
   .ghb{
     -webkit-appearance:none;appearance:none;cursor:pointer;
-    font-family:'Oxanium',monospace;font-size:9px;letter-spacing:.14em;
+    font-family:'Oxanium',monospace;font-size:11px;letter-spacing:.14em;
     color:var(--dim);background:transparent;
     border:1px solid rgba(196,192,182,.22);border-radius:2px;padding:3px 6px;margin-left:4px;
   }
@@ -243,8 +243,10 @@
   .legend{
     flex:0 0 auto;width:100%;max-width:520px;
     border-top:1px solid var(--line);padding-top:7px;
-    display:flex;flex-wrap:wrap;gap:3px 14px;
-    font-size:11px;color:var(--dim);
+    /* 音量バーが浮いているので、その高さぶん下を空ける */
+    padding-bottom:46px;
+    display:flex;flex-wrap:wrap;gap:4px 14px;
+    font-size:13.5px;color:var(--dim);
   }
   .legend span{white-space:nowrap}
   @media (max-height:640px){ .masthead p{display:none} }
@@ -271,7 +273,6 @@
         <div class="cell"><span class="k">BEST</span><span class="v sm" id="vBest">--</span></div>
         <div class="cell drift"><span class="k">DRIFT</span><span class="v sm" id="vDrift">0</span></div>
         <div class="sp"></div>
-        <div class="cell"><span class="k">KM/H</span><span class="v sm" id="vSpd">0</span></div>
       </div>
       <div class="prog"><i id="progBar"></i></div>
 
@@ -1025,7 +1026,6 @@
   var vTime = document.getElementById('vTime');
   var vBest = document.getElementById('vBest');
   var vDrift = document.getElementById('vDrift');
-  var vSpd  = document.getElementById('vSpd');
   var progBar = document.getElementById('progBar');
   var tabsEl  = document.getElementById('tabs');
 
@@ -1040,14 +1040,15 @@
   };
 
   // ---------- 車の性能 ----------
-  var ACCEL = 155, MAXS = 244, TURN = 3.8;
+  // 最高速は 内部値 × 0.62 が表示の km/h。290 → 180km/h
+  var ACCEL = 184, MAXS = 290, TURN = 3.8;
   var GRIP = 2.0;        // 横に戻ろうとする強さ（小さいほど滑る）
   var SPEEDSLIP = 0.62;  // 速いときにどれだけグリップが落ちるか
-  var BACKMAX = 85;      // 逆を向いて流れるときに許す「後ろ向きの速度」の上限
+  var BACKMAX = 101;     // 逆を向いて流れるときに許す「後ろ向きの速度」の上限
   // 踏ん張りがいちばん強くなる横速度。ここを越えると落ちる。
   // 最高速のとき、この値は約45度の角度にあたる。低くしすぎると
   // 普通のドリフト（30〜45度）まで滑ってしまい、操作しづらくなる。
-  var PEAK = 170;
+  var PEAK = 202;
   var TAIL = 0.30;       // 振りきったときに残る踏ん張り（0だと戻らなくなる）
   var STEERUP = 8.0;     // ハンドルが切れていく速さ（大きいほど即座に最大舵角）
   var STEERDN = 11.0;    // 戻す速さ
@@ -1320,7 +1321,7 @@
 
   // 走り方（タイヤの踏ん張りの式）を変えたので、古い決まりで出した記録は
   // 一度だけ消す。名前と音量は残す。
-  var RULES = '2';
+  var RULES = '3';   // 最高速を180km/hに上げたので、前の記録は比べられない
   function resetIfOldRules(){
     try {
       if (localStorage.getItem('wadachi.rules') === RULES) return false;
@@ -1739,6 +1740,7 @@
     drawGhost();
     drawCar();
     drawGhostGap();
+    drawSpeed();
   }
 
   function showTitle2(){
@@ -1755,6 +1757,23 @@
     }
     if (!ghosts[courseIdx]) return 'ゴースト：自己ベスト — まだ記録なし（1本 完走すると記録されます）' + tail;
     return 'ゴースト：自己ベスト　' + fmt(ghostT[courseIdx]) + tail;
+  }
+
+  // 速さは画面の右下に出す（盤の外より、走っている画の中のほうが見やすい）
+  function drawSpeed(){
+    if (st === 'title') return;
+    var kmh = Math.round(Math.hypot(car.vx, car.vy) * 0.62);
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(11,12,16,0.55)';
+    ctx.fillRect(W - 74, H - 46, 68, 40);
+    ctx.fillStyle = 'rgba(232,228,216,0.50)';
+    ctx.font = 'bold 9px Oxanium, monospace';
+    ctx.fillText('KM/H', W - 12, H - 33);
+    ctx.fillStyle = sliding ? '#FFC27A' : '#E8E4D8';
+    ctx.font = 'bold 24px Oxanium, monospace';
+    ctx.fillText(String(kmh), W - 12, H - 12);
+    ctx.restore();
   }
 
   function drawGhost(){
@@ -2030,8 +2049,6 @@ function shade(hex, k){
     if (prev.b !== bs) { vBest.textContent = bs; prev.b = bs; }
     var ds = (score + Math.round(pending*mult)).toLocaleString('ja-JP');
     if (prev.d !== ds) { vDrift.textContent = ds; prev.d = ds; }
-    var kmh = Math.round(Math.hypot(car.vx, car.vy) * 0.62);
-    if (prev.s !== kmh) { vSpd.textContent = kmh; prev.s = kmh; }
     var pg = Math.round(idx / Math.max(1, TRACK.length-1) * 100);
     if (prev.p !== pg) { progBar.style.width = pg + '%'; prev.p = pg; }
     if (prev.sl !== sliding) {
