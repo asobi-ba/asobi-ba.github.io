@@ -93,6 +93,7 @@
   .tab i{font-style:normal;font-size:10.5px;opacity:.75}
   .tab.on{color:var(--amber);border-color:var(--amber);background:rgba(240,135,58,.10)}
   .tab:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+  .tab.story.on{color:#8CF0AE;border-color:#8CF0AE;background:rgba(140,240,174,.08)}
 
   .dash{
     display:flex;align-items:center;gap:11px;
@@ -201,6 +202,19 @@
     font-family:'Oxanium',monospace;font-weight:700;font-size:41.5px;
     font-variant-numeric:tabular-nums;color:var(--text);line-height:1;
   }
+  /* 物語 */
+  .veil .chap{display:inline-flex;align-items:center;gap:10px;font-size:13.5px;letter-spacing:.12em;color:var(--dim)}
+  .veil .chap .nav{
+    font:inherit;font-size:12px;line-height:1;padding:4px 7px;cursor:pointer;
+    color:var(--text);background:transparent;border:1px solid var(--line);border-radius:2px;
+  }
+  .veil .chap .nav:disabled{opacity:.25;cursor:default}
+  .veil .who{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#C4C0B6;letter-spacing:.06em}
+  .veil .who i{display:inline-block;width:14px;height:9px;border:1px solid rgba(232,228,216,.5)}
+  .veil .who b{font-size:19px;color:var(--text);letter-spacing:.14em}
+  .veil .line{display:inline-block;font-size:14.5px;color:var(--text);line-height:1.7}
+  .veil .narr{display:inline-block;font-size:13.5px;color:#A9A59B;line-height:1.75;font-style:normal}
+  .veil .narr.end{margin-top:6px;color:var(--amber-hi);letter-spacing:.12em}
   .veil .sub{font-family:'Oxanium',monospace;font-size:11px;letter-spacing:.18em;color:var(--cool)}
   .go{
     font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700;font-size:16px;
@@ -266,6 +280,7 @@
         <button class="tab on" type="button" data-c="0"><b>杉ノ沢</b><i>バランス</i></button>
         <button class="tab"    type="button" data-c="1"><b>鷹ノ巣</b><i>高速・長い</i></button>
         <button class="tab"    type="button" data-c="2"><b>蛇骨</b><i>ヘアピン連続</i></button>
+        <button class="tab story" type="button" data-c="s"><b>物語</b><i>ライバル10人</i></button>
       </div>
 
       <div class="dash" id="dash">
@@ -1097,6 +1112,71 @@
       ['S',190],['R',92,110],['S',130],['L',66,160],['S',280]
     ]}
   ];
+  // ---------- 物語（ライバルと1対1で勝負していく）----------
+  // c: コース番号 / P: 運転のしかた / pow・top: 強さ。node で全コースを走らせて選んだ。
+  //   単独で走ったときのタイムを () に書いておく（ぶつかり合いが無ければ だいたいこの速さ）。
+  // 人物・チーム名はすべて架空。
+  // 運転のしかたは3通り（コースに合わせたもの）。強さは「アクセルをどこまで踏むか（pow）」
+  // 「どこまで速度を出すか（top）」で分ける。車の性能そのものは自分と同じ。
+  var DRV_A = {l0:120,lk:0.35,th:0.1,ik:5,cw:4,sv:20,v0:110,g:0.01,ma:1.2};   // 杉ノ沢向け
+  var DRV_B = {l0:80,lk:0.35,th:0.04,ik:5,cw:4,sv:30,v0:110,g:0.01,ma:0.6};   // 鷹ノ巣向け
+  var DRV_C = {l0:40,lk:0.15,th:0.1,ik:2,cw:4,sv:12,v0:110,g:0.01,ma:0.6};   // 蛇骨向け
+  var CHAPTERS = [
+    { c:0, who:'タケ', tag:'週末組', col:'#D8D6CC',              // (29.97)
+      P:DRV_A, pow:0.66,
+      pre:'見ない顔だな。杉ノ沢は初めてか？　ついて来られたら、上の連中に紹介してやるよ。',
+      win:'……マジかよ。ブレーキ無しであの突っ込み？　おまえ、ちょっと面白いな。',
+      lose:'まあ最初はそんなもんだ。ラインを覚えりゃ速くなる。' },
+    { c:0, who:'ミオ', tag:'チーム沢鳴り', col:'#4A7FD8',         // (28.20)
+      P:DRV_A, pow:0.78,
+      pre:'タケを抜いた新顔ってあんた？　沢鳴りの看板、安くないよ。',
+      win:'ヘアピンの入りが私より半車身深い……。頭に話しとく。',
+      lose:'突っ込みすぎ。滑らせるのと、流されるのは違うから。' },
+    { c:0, who:'ゲン', tag:'沢鳴りの頭', col:'#3F8F5A',           // (26.30)
+      P:DRV_A, pow:0.9,
+      pre:'この沢で俺の前を走ったやつはいない。並んで出るぞ。当たっても文句は言うなよ。',
+      win:'杉ノ沢はおまえのものだ。……鷹ノ巣へ行け。あそこの連中は桁が違う。',
+      lose:'まだ早い。杉ノ沢の路面と話せるようになってから来い。' },
+    { c:1, who:'リク', tag:'鷹ノ巣の新鋭', col:'#E3C34A',         // (30.03)
+      P:DRV_B, top:200,
+      pre:'杉ノ沢の王様が来たって？　ここは踏みっぱなしの峠だ。度胸が無いと置いていかれるよ。',
+      win:'直線で離せなかった……。立ち上がりで負けてる。',
+      lose:'長い下りの直線、まだ怖がってるでしょ。見えたよ。' },
+    { c:1, who:'サエ', tag:'鷹ノ巣の夜叉', col:'#B04A8F',         // (26.60)
+      P:DRV_B, top:225,
+      pre:'リクに勝ったくらいで上がってきたの？　高速コーナーは、腕より覚悟。',
+      win:'180キロで横を向ける人、久しぶりに見た。',
+      lose:'アウトに逃げたね。覚悟が足りない。' },
+    { c:1, who:'カシワギ', tag:'鷹ノ巣最速', col:'#A8B0B8',       // (25.12)
+      P:DRV_B, top:250,
+      pre:'十年、この峠で負けていない。……話は走ってからだ。',
+      win:'「黒い轍」を知っているか。蛇骨の奥に出る。……おまえなら会えるかもしれん。',
+      lose:'速い。だが、まだ荒い。' },
+    { c:2, who:'ジロウ', tag:'蛇骨の案内人', col:'#A8743A',       // (29.77)
+      P:DRV_C, pow:0.62,
+      pre:'黒い轍を探しに来たか。みんなそう言って、ここのヘアピンで心が折れる。',
+      win:'折れなかったな。……奥へ進め。',
+      lose:'ほら、折れた。ヘアピンは、向きを先に変えるんだ。' },
+    { c:2, who:'ハヤテ', tag:'蛇骨の双子・弟', col:'#7A5FD0',     // (28.35)
+      P:DRV_C, pow:0.78,
+      pre:'ジロウさんを抜いた？　じゃあ次はぼく。ここのヘアピンは目をつぶっても曲がれるよ。',
+      win:'……姉さんに伝えなきゃ。本物が来たって。',
+      lose:'まだ目を開けて走ってるね。' },
+    { c:2, who:'シズカ', tag:'蛇骨の主', col:'#2E5AA8',           // (26.78)
+      P:DRV_C, pow:0.93,
+      pre:'弟が世話になったね。黒い轍に会いたいなら、まず私を越えて。',
+      win:'行きなさい。今夜、杉ノ沢に出るよ。……全部、あそこから始まったんだから。',
+      lose:'蛇骨は、速さよりリズム。もう一度。' },
+    { c:0, who:'黒い轍', tag:'？？？', col:'#3A3A42', boss:true, // (24.03)
+      P:DRV_A, pow:1,
+      pre:'杉ノ沢、午前二時。スタート地点に、真っ黒な車が停まっていた。運転席の顔は見えない。',
+      win:'ゴールの先で、黒い車は静かに止まった。窓が少しだけ開いて、ひと言。<br>「——次は、おまえが轍を残す番だ」',
+      lose:'黒い車はゴールの先で一瞬だけ止まり、また闇に消えた。路面には、黒い轍だけが残っていた。' }
+  ];
+  var PROLOGUE = '深夜の峠に、ブレーキを踏まずに曲がる走り屋がいるという。<br>' +
+                 '路面に黒い轍だけを残して消える。顔を見た者はいない。<br>' +
+                 'おまえの橙色の車は、今夜はじめて峠に上がる。';
+
   var courseIdx = 0;
   var TRACK = [], TRACKLEN = 0, STEP = 7;
 
@@ -1219,6 +1299,26 @@
   var score = 0, pending = 0, mult = 1, driftT = 0, idleT = 0, sliding = false;
   var marks = [], smoke = [], lastWheels = null, hitT = 0, stuckT = 0, holdT = 0, steerV = 0;
   var lastSlip = 0, lastSp = 0;          // 音に渡す用（sp は step() の中だけの変数なので写す）
+
+  // 物語モード
+  var story = false;                     // 物語のタブを選んでいるか
+  var chap = 0;                          // いま挑む章
+  var cleared = 0;                       // 勝ち抜いた数（ここまでの章は選び直せる）
+  var lastWin = false;                   // 直前の勝負に勝ったか
+  var riv = null;                        // ライバルの車
+  var rivFin = 0;                        // ライバルがゴールしたタイム（0＝まだ）
+  var rivAt = [], myAt = [];             // コース上の各点を通ったタイム（差の表示用）
+  var rivWheels = null, bumpT = 0;
+  function CH(){ return CHAPTERS[chap]; }
+  function loadStory(){
+    try {
+      cleared = Math.max(0, Math.min(CHAPTERS.length, parseInt(localStorage.getItem('wadachi.story'), 10) || 0));
+    } catch(e){ cleared = 0; }
+    chap = Math.min(cleared, CHAPTERS.length - 1);
+  }
+  function saveStory(){
+    try { localStorage.setItem('wadachi.story', String(cleared)); } catch(e){}
+  }
 
   // ---------- ゴースト（自己ベストの走りを並走させる） ----------
   var GH_DT = 0.05;                    // 0.05秒ごとに位置を控える（毎秒20回）
@@ -1397,12 +1497,25 @@
     marks.length = 0; smoke.length = 0; lastWheels = null; hitT = 0; stuckT = 0; holdT = 0; steerV = 0;
     lastSlip = 0; lastSp = 0;
     rec.length = 0;
+    riv = null; rivFin = 0; rivWheels = null; bumpT = 0;
+    rivAt.length = 0; myAt.length = 0;
+    if (story) {
+      // 並んでスタート。自分が右、ライバルが左
+      var R = 20;
+      car.x = s0.x + s0.nx * R; car.y = s0.y + s0.ny * R;
+      riv = { x: s0.x - s0.nx * R, y: s0.y - s0.ny * R, ang: s0.a, vx:0, vy:0,
+              steerV:0, holdT:0, idx:0, hitT:0, stuckT:0, lat:0, fwd:0, onRoad:true, wall:false,
+              seen: -1, mySeen: -1, top: CH().top || 0, pow: CH().pow || 0,
+              col: { body: CH().col, lampCore: '#FFE9BC' } };
+      camX = s0.x - W/2; camY = s0.y - H/2;
+    }
   }
   function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
     reset(); st = 'count'; countT = 3.2; countEl.classList.remove('off'); veil.classList.add('off'); lastT = 0; }
   var wiped = false;
   function showTitle(){
+    if (story) { showStory(); return; }
     st = 'title'; reset();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
     if (window.SCOREBOARD) SCOREBOARD.top('wadachi-' + (courseIdx + 1));
@@ -1420,6 +1533,7 @@
   function finish(miss){
     st = 'done';
     bank();
+    if (story) { storyResult(miss); return; }
     if (miss > 0) {                       // 通過点を飛ばしている＝ショートカット
       if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.fail(); }
       veilTitle.textContent = 'SHORTCUT';
@@ -1460,14 +1574,90 @@
     ghost = ghosts[courseIdx];
     if (!topG[courseIdx]) fetchTop(courseIdx);
     var btns = tabsEl.getElementsByTagName('button');
-    for (var k=0;k<btns.length;k++) btns[k].classList.toggle('on', k === courseIdx);
+    for (var k=0;k<btns.length;k++){
+      var isS = btns[k].getAttribute('data-c') === 's';
+      btns[k].classList.toggle('on', story ? isS : (!isS && k === courseIdx));
+    }
     prev = {};
     showTitle();
   }
   tabsEl.addEventListener('click', function(e){
     var b = e.target;
     while (b && b !== tabsEl && !b.getAttribute('data-c')) b = b.parentNode;
-    if (b && b !== tabsEl) setCourse(parseInt(b.getAttribute('data-c'), 10));
+    if (!b || b === tabsEl) return;
+    var v = b.getAttribute('data-c');
+    if (v === 's') { story = true; setCourse(CH().c); }
+    else { story = false; setCourse(parseInt(v, 10)); }
+  });
+
+  // ---------- 物語の画面 ----------
+  function chapHead(){
+    return '<span class="chap">' +
+      '<button type="button" class="nav" data-nav="-1"' + (chap > 0 ? '' : ' disabled') + ' aria-label="前の章">◀</button>' +
+      '<span>第' + (chap + 1) + '戦 ／ ' + CHAPTERS.length + '　' + COURSES[CH().c].name + '</span>' +
+      '<button type="button" class="nav" data-nav="1"' + (chap < Math.min(cleared, CHAPTERS.length - 1) ? '' : ' disabled') + ' aria-label="次の章">▶</button>' +
+      '</span>';
+  }
+  function whoLine(){
+    var c = CH();
+    return '<span class="who"><i style="background:' + c.col + '"></i>' + c.tag + '　<b>' + c.who + '</b></span>';
+  }
+  function showStory(){
+    st = 'title'; reset();
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
+    if (window.SCOREBOARD) SCOREBOARD.hide();
+    var c = CH();
+    veilTitle.textContent = c.boss ? 'FINAL BATTLE' : 'TOUGE BATTLE';
+    veilBody.innerHTML = chapHead() + '<br>' +
+      (chap === 0 && cleared === 0 ? '<span class="narr">' + PROLOGUE + '</span><br>' : '') +
+      whoLine() + '<br>' +
+      (c.boss ? '<span class="narr">' + c.pre + '</span>' : '<span class="line">「' + c.pre + '」</span>') + '<br>' +
+      '<span class="gh">並んでスタート。相手より先にゴールすれば勝ち。車はぶつかる。</span>' +
+      (cleared > chap ? '<br><span class="gh">勝ち抜き済み</span>' : '');
+    goBtn.textContent = 'バトル開始';
+    veil.classList.remove('off');
+    countEl.classList.add('off');
+  }
+  function storyResult(miss){
+    var c = CH();
+    var win = miss === 0 && (!rivFin || time < rivFin);
+    lastWin = win;
+    if (win && cleared <= chap) { cleared = chap + 1; saveStory(); }
+    if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); if (win) WADACHI_AUDIO.goal(true); else WADACHI_AUDIO.fail(); }
+    var last = win && chap === CHAPTERS.length - 1;
+    veilTitle.textContent = win ? 'WIN' : 'LOSE';
+    var res = miss > 0 ? '<span class="sub" style="color:#E0453A">関門を ' + miss + ' 箇所 くぐっていません（反則負け）</span>'
+            : '<span class="sub">あいて ' + (rivFin ? fmt(rivFin) : 'まだ走っている') + '</span>';
+    var talk = win ? c.win : c.lose;
+    veilBody.innerHTML = chapHead() + '<br>' +
+      '<span class="big">' + fmt(time) + '</span><br>' + res + '<br>' +
+      whoLine() + '<br>' +
+      (c.boss ? '<span class="narr">' + talk + '</span>' : '<span class="line">「' + talk + '」</span>') +
+      (last ? '<br><span class="narr end">黒い轍 ― 完 ―<br>峠に、新しい噂が立ちはじめる。</span>' : '');
+    goBtn.textContent = win ? (last ? 'もういちど最終戦' : '次の相手へ') : 'もういちど';
+    veil.classList.remove('off');
+    countEl.classList.add('off');
+  }
+  // 「スタート」ボタン・Space キーで行うこと
+  var goAt = 0;
+  function goAction(){
+    // キーとボタンの両方から同時に来ても、1回ぶんだけ進める
+    var now = Date.now();
+    if (now - goAt < 350) return;
+    goAt = now;
+    if (st === 'pause') { setPause(false); return; }
+    if (story && st === 'done' && lastWin && chap < CHAPTERS.length - 1) {
+      chap++; lastWin = false; setCourse(CH().c); return;
+    }
+    startGame();
+  }
+  veilBody.addEventListener('click', function(e){
+    var b = e.target;
+    if (!b || !b.getAttribute || !b.getAttribute('data-nav') || b.disabled) return;
+    var n = chap + parseInt(b.getAttribute('data-nav'), 10);
+    if (n < 0 || n > Math.min(cleared, CHAPTERS.length - 1)) return;
+    chap = n; lastWin = false;
+    setCourse(CH().c);
   });
 
   var ghBtn = document.getElementById('ghBtn');
@@ -1493,7 +1683,7 @@
     volSl.value = Math.round(WADACHI_AUDIO.getVol() * 100);
     volSl.addEventListener('input', function(){ WADACHI_AUDIO.setVol(volSl.value / 100); });
   }
-  goBtn.addEventListener('click', function(){ if (st === 'pause') setPause(false); else startGame(); });
+  goBtn.addEventListener('click', goAction);
 
   // ---------- そうさ（左右だけ） ----------
   var keys = {}, touchDir = 0;
@@ -1501,9 +1691,10 @@
     var k = e.key;
     if (k === ' ' || k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') e.preventDefault();
     keys[k] = true;
-    if (k === ' ' || k === 'Enter') {
-      if (st === 'title' || st === 'done') startGame();
-      else if (st === 'pause') setPause(false);
+    // ボタンにフォーカスがあるときの Enter はボタン側の click で動く（二重に進めない）
+    var onBtn = e.target && e.target.tagName === 'BUTTON';
+    if (k === ' ' || (k === 'Enter' && !onBtn)) {
+      if (st === 'title' || st === 'done' || st === 'pause') goAction();
     }
     if (k === 'p' || k === 'P') { if (st === 'play') setPause(true); else if (st === 'pause') setPause(false); }
     if (k === 'g' || k === 'G') toggleGh();
@@ -1549,108 +1740,22 @@
 
     time += dt;
 
-    var d = steerDir();
-    var sp = Math.hypot(car.vx, car.vy);
-    // 切り続けるほど後ろが出る。戻すと素早く収まる
-    if (d !== 0) holdT = Math.min(1, holdT + dt*1.7); else holdT = Math.max(0, holdT - dt*2.8);
-    // ハンドルは一気にではなく、押している長さに応じて切れていく
-    var rate = (d === 0 || d * steerV < 0) ? STEERDN : STEERUP;
-    steerV += (d - steerV) * Math.min(1, rate * dt);
-    car.ang += steerV * TURN * Math.max(0.32, Math.min(1, sp/70)) * dt;  // 止まっていても向きは変えられる
-
+    car.steerV = steerV; car.holdT = holdT; car.idx = idx; car.hitT = hitT; car.stuckT = stuckT;
+    drive(car, steerDir(), dt);
+    steerV = car.steerV; holdT = car.holdT; idx = car.idx; hitT = car.hitT; stuckT = car.stuckT;
+    if (story && riv) stepRival(dt);
     var fx = Math.sin(car.ang), fy = -Math.cos(car.ang);
     var rx = Math.cos(car.ang), ry = Math.sin(car.ang);
-    var fwd = car.vx*fx + car.vy*fy;
-    var lat = car.vx*rx + car.vy*ry;
+    var lat = car.lat, fwd = car.fwd, onRoad = car.onRoad;
 
-    // コース上のどこにいるか
-    idx = nearest(car.x, car.y, idx);
-    var sN = TRACK[idx];
-    var offv = (car.x - sN.x)*sN.nx + (car.y - sN.y)*sN.ny;   // 中心からの横ずれ
-    var off = Math.abs(offv) - HALF;
-    var onRoad = off < 0;
-
-    // 前へ
-    // 角度をつけている間は駆動が前へ出る（パワーをかけたドリフト）。
-    // 山で最大になり、そこを越えると急に効かなくなるので、振りすぎても得しない。
-    var la1 = Math.abs(lat);
-    var drv = la1 <= PEAK ? la1 / PEAK
-                          : Math.max(0, (PEAK * 1.5 - la1) / (PEAK * 0.5));
-    fwd += ACCEL * (1 + DRIVE * drv) * dt;
-    // 坂：下りは押され、上りは抑えられる
-    fwd += GRAV * sN.g * dt;
-    fwd -= fwd * (onRoad ? 0.16 : 1.1) * dt;
-    if (fwd > MAXS) fwd = MAXS;
-    // 滑ったぶんの減速＝これが唯一の減速。
-    // 前向きの速度からだけ引くと、真横を向いた（前向きが0の）ときに減速が
-    // 効かなくなり、勢いを保ったまま向きだけ戻って かえって速くなる。
-    // 前向きで引ききれないぶんは、横向きの勢いから削る。
-    var la0 = Math.abs(lat);
-    var loss = (la0 <= PEAK ? la0 * SCRUB * SCRUBMILD
-                            : PEAK * SCRUB * SCRUBMILD + (la0 - PEAK) * SCRUB * SCRUBHARD) * dt;
-    var take = Math.min(Math.max(0, fwd), loss);
-    fwd -= take;
-    // 90度を超えて流れると、前向きの速度はマイナス（車が進行方向と逆を向いている）。
-    // このときエンジンは進行方向に対して逆向きに押すので、加速ではなく減速になる。
-    // ここを 0 で止めるとその減速が丸ごと消え、90度で張り付いて振り回すほど速くなる。
-    if (fwd < -BACKMAX) fwd = -BACKMAX;
-    var rest = loss - take;
-    if (rest > 0){
-      var cut = Math.min(Math.abs(lat), rest);
-      lat -= (lat > 0 ? cut : -cut);
-    }
-
-    // 横のグリップ
-    // タイヤの踏ん張りは PEAK でいちばん強く、そこを越えると落ちていく。
-    // 横速度に比例させ続けると、大きく振るほど強く引き戻されて速くなってしまう。
-    var fast = 1 - SPEEDSLIP * Math.min(1, sp / MAXS);
-    // 荷重：頂上では抜けて滑りやすく、谷では沈んで 食いつく
-    var load = Math.max(0.60, Math.min(1.40, 1 - CREST * sN.dg));
-    var grip = GRIP * fast * (1 - HOLD*holdT) * (onRoad ? 1 : 0.5) * load;
-    var la = Math.abs(lat);
-    var curve = la <= PEAK ? la : Math.max(PEAK * TAIL, PEAK * PEAK / la);
-    var dLat = Math.min(la, grip * curve * dt);
-    lat -= (lat > 0 ? dLat : -dLat);
-
-    car.vx = fx*fwd + rx*lat;
-    car.vy = fy*fwd + ry*lat;
-    // 前向きの成分だけを頭打ちにすると、車が回ったときに前向きへ空きができて
-    // そこへ推進が継ぎ足される。回すたびに繰り返されるので、振り回すほど
-    // 全体の速さが増えてしまう（実測で最高速の106%まで出ていた）。
-    // 全体の速さで頭打ちにする。まっすぐ走ったときの最高速は変わらない。
-    var tot = Math.hypot(car.vx, car.vy);
-    if (tot > MAXS){ var kk = MAXS / tot; car.vx *= kk; car.vy *= kk; }
-    car.x += car.vx * dt;
-    car.y += car.vy * dt;
-
-    // 壁
-    if (off > WALL) {
-      var sgn = offv > 0 ? 1 : -1;
-      // 壁の内側へ少し戻す（ちょうどの位置に置くと張り付く）
-      car.x = sN.x + sN.nx * sgn * (HALF + WALL - 7);
-      car.y = sN.y + sN.ny * sgn * (HALF + WALL - 7);
-      // 壁へ向かう成分だけ消す。前へ進む成分は残すので、壁ぞいに流れて復帰できる
-      var vn = car.vx*sN.nx + car.vy*sN.ny;
-      if (vn * sgn > 0) { car.vx -= sN.nx * vn; car.vy -= sN.ny * vn; }
-      car.vx *= 0.72; car.vy *= 0.72;
-      hitT = 0.35;
+    if (car.wall) {
       if (window.WADACHI_AUDIO) WADACHI_AUDIO.hitWall();
       pending = 0; mult = 1; driftT = 0;
       for (var i=0;i<8;i++) smoke.push({ x:car.x, y:car.y, r:4+Math.random()*7, life:1 });
     }
-    if (hitT > 0) hitT -= dt;
-
-    // どうにも動けなくなったら、コースの中心へ戻して立て直す
-    if (Math.hypot(car.vx, car.vy) < 16) stuckT += dt; else stuckT = 0;
-    if (stuckT > 1.1) {
-      stuckT = 0;
-      car.x = sN.x; car.y = sN.y; car.ang = sN.a;
-      car.vx = Math.sin(sN.a)*55; car.vy = -Math.cos(sN.a)*55;
-      hitT = 0.5;
-    }
 
     // 滑り具合
-    sp = Math.hypot(car.vx, car.vy);
+    var sp = Math.hypot(car.vx, car.vy);
     lastSp = sp;
     var slip = Math.abs(Math.atan2(lat, Math.max(18, fwd)));
     lastSlip = slip;
@@ -1702,6 +1807,202 @@
     var k = Math.min(1, 6.5*dt);
     camX += (tx - camX) * k;
     camY += (ty - camY) * k;
+  }
+
+  // ---------- 車を1コマ動かす（自分の車もライバルの車も、この同じ式で走る）----------
+  // c: 車（x,y,ang,vx,vy と steerV,holdT,idx,hitT,stuckT を持つ）、d: ハンドル -1/0/1
+  // 結果として c.lat, c.fwd, c.onRoad, c.wall（このコマで壁に当たったか）を残す。
+  function drive(c, d, dt){
+    var sp = Math.hypot(c.vx, c.vy);
+    // 切り続けるほど後ろが出る。戻すと素早く収まる
+    if (d !== 0) c.holdT = Math.min(1, c.holdT + dt*1.7); else c.holdT = Math.max(0, c.holdT - dt*2.8);
+    // ハンドルは一気にではなく、押している長さに応じて切れていく
+    var rate = (d === 0 || d * c.steerV < 0) ? STEERDN : STEERUP;
+    c.steerV += (d - c.steerV) * Math.min(1, rate * dt);
+    c.ang += c.steerV * TURN * Math.max(0.32, Math.min(1, sp/70)) * dt;  // 止まっていても向きは変えられる
+
+    var fx = Math.sin(c.ang), fy = -Math.cos(c.ang);
+    var rx = Math.cos(c.ang), ry = Math.sin(c.ang);
+    var fwd = c.vx*fx + c.vy*fy;
+    var lat = c.vx*rx + c.vy*ry;
+
+    // コース上のどこにいるか
+    c.idx = nearest(c.x, c.y, c.idx);
+    var sN = TRACK[c.idx];
+    var offv = (c.x - sN.x)*sN.nx + (c.y - sN.y)*sN.ny;   // 中心からの横ずれ
+    var off = Math.abs(offv) - HALF;
+    var onRoad = off < 0;
+
+    // 前へ
+    // 角度をつけている間は駆動が前へ出る（パワーをかけたドリフト）。
+    // 山で最大になり、そこを越えると急に効かなくなるので、振りすぎても得しない。
+    var la1 = Math.abs(lat);
+    var drv = la1 <= PEAK ? la1 / PEAK
+                          : Math.max(0, (PEAK * 1.5 - la1) / (PEAK * 0.5));
+    // c.pow：ライバルの運転手がアクセルをどこまで踏むか（1＝床まで）。自分の車は持たない＝1
+    fwd += ACCEL * (c.pow || 1) * (1 + DRIVE * drv) * dt;
+    // 坂：下りは押され、上りは抑えられる
+    fwd += GRAV * sN.g * dt;
+    fwd -= fwd * (onRoad ? 0.16 : 1.1) * dt;
+    // c.top：ライバルの運転手が出す速さの上限（怖がって踏み切れない分）。自分の車は持たない＝MAXS
+    var top = c.top || MAXS;
+    if (fwd > top) fwd = top;
+    // 滑ったぶんの減速＝これが唯一の減速。
+    // 前向きの速度からだけ引くと、真横を向いた（前向きが0の）ときに減速が
+    // 効かなくなり、勢いを保ったまま向きだけ戻って かえって速くなる。
+    // 前向きで引ききれないぶんは、横向きの勢いから削る。
+    var la0 = Math.abs(lat);
+    var loss = (la0 <= PEAK ? la0 * SCRUB * SCRUBMILD
+                            : PEAK * SCRUB * SCRUBMILD + (la0 - PEAK) * SCRUB * SCRUBHARD) * dt;
+    var take = Math.min(Math.max(0, fwd), loss);
+    fwd -= take;
+    // 90度を超えて流れると、前向きの速度はマイナス（車が進行方向と逆を向いている）。
+    // このときエンジンは進行方向に対して逆向きに押すので、加速ではなく減速になる。
+    // ここを 0 で止めるとその減速が丸ごと消え、90度で張り付いて振り回すほど速くなる。
+    if (fwd < -BACKMAX) fwd = -BACKMAX;
+    var rest = loss - take;
+    if (rest > 0){
+      var cut = Math.min(Math.abs(lat), rest);
+      lat -= (lat > 0 ? cut : -cut);
+    }
+
+    // 横のグリップ
+    // タイヤの踏ん張りは PEAK でいちばん強く、そこを越えると落ちていく。
+    // 横速度に比例させ続けると、大きく振るほど強く引き戻されて速くなってしまう。
+    var fast = 1 - SPEEDSLIP * Math.min(1, sp / MAXS);
+    // 荷重：頂上では抜けて滑りやすく、谷では沈んで 食いつく
+    var load = Math.max(0.60, Math.min(1.40, 1 - CREST * sN.dg));
+    var grip = GRIP * fast * (1 - HOLD*c.holdT) * (onRoad ? 1 : 0.5) * load;
+    var la = Math.abs(lat);
+    var curve = la <= PEAK ? la : Math.max(PEAK * TAIL, PEAK * PEAK / la);
+    var dLat = Math.min(la, grip * curve * dt);
+    lat -= (lat > 0 ? dLat : -dLat);
+
+    c.vx = fx*fwd + rx*lat;
+    c.vy = fy*fwd + ry*lat;
+    // 前向きの成分だけを頭打ちにすると、車が回ったときに前向きへ空きができて
+    // そこへ推進が継ぎ足される。回すたびに繰り返されるので、振り回すほど
+    // 全体の速さが増えてしまう（実測で最高速の106%まで出ていた）。
+    // 全体の速さで頭打ちにする。まっすぐ走ったときの最高速は変わらない。
+    var tot = Math.hypot(c.vx, c.vy);
+    if (tot > top){ var kk = top / tot; c.vx *= kk; c.vy *= kk; }
+    c.x += c.vx * dt;
+    c.y += c.vy * dt;
+
+    // 壁
+    c.wall = false;
+    if (off > WALL) {
+      var sgn = offv > 0 ? 1 : -1;
+      // 壁の内側へ少し戻す（ちょうどの位置に置くと張り付く）
+      c.x = sN.x + sN.nx * sgn * (HALF + WALL - 7);
+      c.y = sN.y + sN.ny * sgn * (HALF + WALL - 7);
+      // 壁へ向かう成分だけ消す。前へ進む成分は残すので、壁ぞいに流れて復帰できる
+      var vn = c.vx*sN.nx + c.vy*sN.ny;
+      if (vn * sgn > 0) { c.vx -= sN.nx * vn; c.vy -= sN.ny * vn; }
+      c.vx *= 0.72; c.vy *= 0.72;
+      c.hitT = 0.35;
+      c.wall = true;
+    }
+    if (c.hitT > 0) c.hitT -= dt;
+
+    // どうにも動けなくなったら、コースの中心へ戻して立て直す
+    if (Math.hypot(c.vx, c.vy) < 16) c.stuckT += dt; else c.stuckT = 0;
+    if (c.stuckT > 1.1) {
+      c.stuckT = 0;
+      c.x = sN.x; c.y = sN.y; c.ang = sN.a;
+      c.vx = Math.sin(sN.a)*55; c.vy = -Math.cos(sN.a)*55;
+      c.hitT = 0.5;
+    }
+    c.lat = lat; c.fwd = fwd; c.onRoad = onRoad;
+  }
+
+  // ---------- ライバルの運転手（コンピュータ）----------
+  // 人と同じく左右のハンドルだけ。少し先のコース上の点を狙い、曲がる側へ寄せた点に向けて切る。
+  // この先がきつく曲がっていて速すぎるときは、早めに向きを入れて滑らせ、速度を落とす
+  // （ブレーキが無いので、人と同じくこれが唯一の減速）。
+  // P: l0,lk 見る先 / ik,cw 寄せ方 / th 切り始め / sv,v0 先のきつさと出してよい速さ / g,ma 向きの入れ方
+  function wrapA(a){ while (a > Math.PI) a -= Math.PI*2; while (a < -Math.PI) a += Math.PI*2; return a; }
+  function botSteer(c, P){
+    var sp = Math.hypot(c.vx, c.vy);
+    var j = Math.min(TRACK.length-1, c.idx + Math.max(2, Math.round((P.l0 + sp*P.lk) / STEP)));
+    var a = Math.max(0, j - P.cw), b = Math.min(TRACK.length-1, j + P.cw);
+    var off = Math.max(-1, Math.min(1, wrapA(TRACK[b].a - TRACK[a].a) * P.ik)) * 40;
+    var tp = TRACK[j];
+    var err = wrapA(Math.atan2(tp.x + tp.nx*off - c.x, -(tp.y + tp.ny*off - c.y)) - c.ang);
+    var e = Math.min(TRACK.length-1, c.idx + P.sv);
+    var turn = wrapA(TRACK[e].a - TRACK[c.idx].a);
+    var vs = P.v0 / (0.3 + Math.abs(turn));
+    if (sp > vs && Math.abs(turn) > 0.25) err += (turn > 0 ? 1 : -1) * Math.min(P.ma, (sp - vs) * P.g);
+    return err > P.th ? 1 : err < -P.th ? -1 : 0;
+  }
+
+  // ライバルを1コマ動かし、ぶつかっていれば押し合う
+  function stepRival(dt){
+    var r = riv;
+    if (!rivFin) {
+      drive(r, botSteer(r, CH().P), dt);
+      if (r.idx >= TRACK.length - 3) rivFin = time;
+    } else {
+      // ゴールしたら惰性で流して止まる（コースの先には道が無いので、ハンドルは切らない）
+      var kd = Math.max(0, 1 - 1.6*dt);
+      r.vx *= kd; r.vy *= kd; r.x += r.vx*dt; r.y += r.vy*dt;
+      r.lat = 0;
+    }
+    // 差の表示用に、各点を通ったタイムを控える
+    for (var i = r.seen + 1; i <= r.idx; i++) rivAt[i] = time;
+    if (r.idx > r.seen) r.seen = r.idx;
+    for (var j = r.mySeen + 1; j <= idx; j++) myAt[j] = time;
+    if (idx > r.mySeen) r.mySeen = idx;
+
+    // ライバルの轍と煙
+    var fx = Math.sin(r.ang), fy = -Math.cos(r.ang), rx = Math.cos(r.ang), ry = Math.sin(r.ang);
+    if (Math.abs(r.lat) > 34) {
+      var wl = { x: r.x - rx*13.8 - fx*18, y: r.y - ry*13.8 - fy*18 };
+      var wr = { x: r.x + rx*13.8 - fx*18, y: r.y + ry*13.8 - fy*18 };
+      if (rivWheels) {
+        marks.push({ x1:rivWheels.l.x, y1:rivWheels.l.y, x2:wl.x, y2:wl.y });
+        marks.push({ x1:rivWheels.r.x, y1:rivWheels.r.y, x2:wr.x, y2:wr.y });
+        while (marks.length > 1400) marks.shift();
+      }
+      if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1 });
+      rivWheels = { l:wl, r:wr };
+    } else rivWheels = null;
+
+    if (bumpT > 0) bumpT -= dt;
+    var hit = collide(car, r);
+    if (hit > 25 && bumpT <= 0) {
+      bumpT = 0.25;
+      if (window.WADACHI_AUDIO) WADACHI_AUDIO.hitWall();
+      for (var s = 0; s < 4; s++) smoke.push({ x:(car.x+r.x)/2, y:(car.y+r.y)/2, r:3+Math.random()*5, life:1 });
+    }
+  }
+
+  // 2台の当たり。車体を前後2つの円で近似する（全長62・全幅31 に合わせて 前後±14・半径15.5）。
+  // 重なったぶんを半分ずつ押し戻し、押し合う向きの速さを分け合う（同じ重さ）。
+  // 車体の端に当たると向きも少し回る。戻り値は当たりの強さ（音を鳴らすかの目安）。
+  var CR = 15.5, CO = 14, BOUNCE = 0.35, SPIN = 0.0004;
+  function collide(a, b){
+    var best = 0;
+    for (var ia = -1; ia <= 1; ia += 2){
+      for (var ib = -1; ib <= 1; ib += 2){
+        var ax = a.x + Math.sin(a.ang)*CO*ia, ay = a.y - Math.cos(a.ang)*CO*ia;
+        var bx = b.x + Math.sin(b.ang)*CO*ib, by = b.y - Math.cos(b.ang)*CO*ib;
+        var dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy);
+        if (d >= CR*2 || d < 0.001) continue;
+        var nx = dx / d, ny = dy / d, ov = (CR*2 - d) / 2;
+        a.x -= nx*ov; a.y -= ny*ov; b.x += nx*ov; b.y += ny*ov;
+        var vr = (b.vx - a.vx)*nx + (b.vy - a.vy)*ny;   // 近づく速さ（マイナス＝近づいている）
+        if (vr >= 0) continue;
+        var jm = -(1 + BOUNCE) * vr / 2;
+        a.vx -= nx*jm; a.vy -= ny*jm; b.vx += nx*jm; b.vy += ny*jm;
+        // 当たった円の位置（車の中心から）× 受けた力 で回す
+        var rax = ax - a.x, ray = ay - a.y, rbx = bx - b.x, rby = by - b.y;
+        a.ang += SPIN * (rax*(-ny*jm) - ray*(-nx*jm));
+        b.ang += SPIN * (rbx*( ny*jm) - rby*( nx*jm));
+        if (jm > best) best = jm;
+      }
+    }
+    return best * 2;
   }
 
   // ---------- 絵 ----------
@@ -1810,8 +2111,10 @@
     ctx.globalAlpha = 1;
 
     drawGhost();
+    drawRival();
     drawCar();
     drawGhostGap();
+    drawRivalGap();
     drawSpeed();
     drawProfile();
   }
@@ -1891,8 +2194,64 @@
     ctx.restore();
   }
 
+  // ライバルの車。画面の外にいるときは、いる方向の画面のふちに印を出す
+  function drawRival(){
+    if (!story || !riv) return;
+    var r = riv, x = r.x - camX, y = r.y - camY;
+    if (x < -40 || x > W+40 || y < -40 || y > H+40) {
+      if (st !== 'play') return;
+      var cx = W/2, cy = H/2, dx = x - cx, dy = y - cy;
+      var k = Math.min((W/2 - 12) / Math.max(1e-6, Math.abs(dx)), (H/2 - 12) / Math.max(1e-6, Math.abs(dy)));
+      var ex = cx + dx*k, ey = cy + dy*k, an = Math.atan2(dy, dx);
+      ctx.save();
+      ctx.translate(ex, ey); ctx.rotate(an);
+      ctx.fillStyle = r.col.body; ctx.strokeStyle = '#E8E4D8'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-6, -6); ctx.lineTo(-6, 6); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    var slipR = Math.abs(Math.atan2(r.lat || 0, Math.max(18, r.fwd || 0)));
+    var blink = r.hitT > 0 && Math.floor(r.hitT*20) % 2 === 0;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(r.ang);
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = COL.lamp;
+    ctx.beginPath();
+    ctx.moveTo(-9, -26); ctx.lineTo(-48, -196); ctx.lineTo(48, -196); ctx.lineTo(9, -26);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    drawCarNew(ctx, r.col, r.steerV, slipR > 0.18, slipR, blink, false);
+    // 黒い車は夜の路面に溶けるので、ふちを薄く光らせる
+    if (CH().boss && !blink) {
+      ctx.strokeStyle = 'rgba(200,205,220,0.35)'; ctx.lineWidth = 1.2;
+      bodyPath(ctx, 0, 0); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ライバルとの差（秒）。マイナス＝自分が前
+  function drawRivalGap(){
+    if (!story || !riv || st !== 'play') return;
+    var d = null;
+    if (riv.idx > idx && rivAt[idx] !== undefined) d = time - rivAt[idx];
+    else if (idx > riv.idx && myAt[riv.idx] !== undefined) d = -(time - myAt[riv.idx]);
+    else d = 0;
+    var txt = rivFin ? '相手がゴール' : (d > 0 ? '+' : d < 0 ? '-' : '±') + Math.abs(d).toFixed(2);
+    ctx.save();
+    ctx.font = 'bold 11px Oxanium, "Zen Kaku Gothic New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(11,12,16,0.62)';
+    var w = rivFin ? 84 : 58;
+    ctx.fillRect(W/2 - w/2, 5, w, 15);
+    ctx.fillStyle = rivFin || d > 0 ? '#E0453A' : '#8CF0AE';
+    ctx.fillText(txt, W/2, 16);
+    ctx.restore();
+  }
+
   function drawGhost(){
-    if (st !== 'play') return;
+    if (st !== 'play' || story) return;
     var c = curGhost();
     if (!c) return;
     ghost = c.arr;
@@ -1911,7 +2270,7 @@
 
   // 手本との差。マイナスなら自分が前に出ている
   function drawGhostGap(){
-    if (st !== 'play') return;
+    if (st !== 'play' || story) return;
     var c = curGhost();
     if (!c) return;
     ghost = c.arr;
@@ -2204,6 +2563,7 @@ function shade(hex, k){
   function boot(saved){
     wiped = resetIfOldRules();
     loadBest();
+    loadStory();
     syncGh();
     if (saved && saved.best && (!best || saved.best < best)) { best = saved.best; saveBest(); }
     layout();
