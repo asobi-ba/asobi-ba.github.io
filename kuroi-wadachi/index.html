@@ -336,9 +336,9 @@
         <div class="count off" id="count" aria-hidden="true"><span id="countN">3</span></div>
         <div class="rpui" id="rpui" hidden>
           <span class="rptag">REPLAY</span>
-          <button type="button" id="rpView">視点 中継</button>
-          <button type="button" id="rpSlow">スロー</button>
-          <button type="button" id="rpEnd">終わる</button>
+          <button type="button" id="rpView" title="V キーでも切り替え">視点 中継</button>
+          <button type="button" id="rpSlow" title="S キーでも切り替え">スロー</button>
+          <button type="button" id="rpEnd" title="Esc キーでも終わる">終わる</button>
         </div>
         <div class="veil" id="veil">
           <h2 id="veilTitle">TOUGE TIME ATTACK</h2>
@@ -362,8 +362,7 @@
     <span>Space＝スタート／やり直し</span>
     <span>P＝やすみ</span>
     <span>G＝ゴースト</span>
-    <span>V＝視点（上から／運転席）</span>
-    <span>リプレイ中：V＝視点　S＝スロー　Esc＝終わる</span>
+    <span>V＝視点</span>
   </div>
 </div>
 
@@ -1590,6 +1589,7 @@
       camX = s0.x - W/2; camY = s0.y - H/2;
     }
     cabYaw = car.ang; cabPitch = pitchAt(0);
+    resetChase();
   }
   function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
@@ -1817,11 +1817,11 @@
   var vwBtn = document.getElementById('vwBtn');
   function syncView(){
     if (!vwBtn) return;
-    vwBtn.textContent = view === 'cab' ? '視点 運転席' : '視点 上から';
+    vwBtn.textContent = '視点 ' + RVNAME[view];
     vwBtn.title = 'V キーでも切り替え';
   }
   function toggleView(){
-    view = view === 'cab' ? 'top' : 'cab';
+    view = view === 'top' ? 'cab' : view === 'cab' ? 'chase' : 'top';
     try { localStorage.setItem('wadachi.view', view); } catch(e){}
     syncView();
     layout();
@@ -1965,6 +1965,7 @@
     camX += (tx - camX) * k;
     camY += (ty - camY) * k;
     followCab(dt);
+    followChase(dt);
   }
 
   // ---------- 車を1コマ動かす（自分の車もライバルの車も、この同じ式で走る）----------
@@ -2228,6 +2229,8 @@
     var cv0 = curView();
     if (cv0 === 'chase' || cv0 === 'tv') {
       drawExt(cv0);
+      drawGhostGap();
+      drawRivalGap();
       drawSpeed();
       drawProfile();
       return;
@@ -2533,9 +2536,7 @@
     applyReplay(0, 0);
     camX = car.x - W/2; camY = car.y - H/2;
     cabYaw = car.ang; cabPitch = pitchAt(idx);
-    chase.yaw = car.ang;
-    chase.x = car.x - Math.sin(car.ang)*80; chase.y = car.y + Math.cos(car.ang)*80;
-    chase.z = (TRACK[idx] ? TRACK[idx].h : 0) + 30;
+    resetChase();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
     rpui.hidden = false;
     syncRp();
@@ -2632,7 +2633,10 @@
     var k = Math.min(1, 6.5*d);
     camX += (tx - camX) * k; camY += (ty - camY) * k;
     followCab(d);
-    // 追いかけカメラ：進む向きの後ろ上から。滑ると車が斜めに見える
+    followChase(d);
+  }
+  // 追いかけカメラ：進む向きの後ろ上から。滑ると車が斜めに見える（走っている間もリプレイでも使う）
+  function followChase(d){
     var sp = Math.hypot(car.vx, car.vy);
     var dirA = sp > 20 ? Math.atan2(car.vx, -car.vy) : car.ang;
     chase.yaw += wrapA(dirA - chase.yaw) * Math.min(1, 3.5*d);
@@ -2641,6 +2645,11 @@
     var kk = Math.min(1, 7*d);
     chase.x += (cx - chase.x) * kk; chase.y += (cy - chase.y) * kk;
     chase.z += (base + 30 - chase.z) * kk;
+  }
+  function resetChase(){
+    chase.yaw = car.ang;
+    chase.x = car.x - Math.sin(car.ang)*82; chase.y = car.y + Math.cos(car.ang)*82;
+    chase.z = (TRACK[idx] ? TRACK[idx].h : 0) + 30;
   }
 
   // 中継カメラ：コースの外側（曲がる側の反対）に、ほぼ一定の間隔で立てる
@@ -3445,7 +3454,7 @@ function shade(hex, k){
     loadBest();
     loadStory();
     loadMyCol();
-    try { if (localStorage.getItem('wadachi.view') === 'cab') view = 'cab'; } catch(e){}
+    try { var v0 = localStorage.getItem('wadachi.view'); if (v0 === 'cab' || v0 === 'chase') view = v0; } catch(e){}
     syncView();
     syncGh();
     if (saved && saved.best && (!best || saved.best < best)) { best = saved.best; saveBest(); }
