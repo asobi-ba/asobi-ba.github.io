@@ -323,7 +323,7 @@
     </div>
   </div>
 
-  <div class="vol"><span>SOUND</span><input id="volSl" type="range" min="0" max="100" step="5" value="50" aria-label="音量"><button class="ghb" id="ghBtn" type="button" aria-pressed="true">GHOST</button></div>
+  <div class="vol"><span>SOUND</span><input id="volSl" type="range" min="0" max="100" step="5" value="50" aria-label="音量"><button class="ghb" id="ghBtn" type="button" aria-pressed="true">GHOST</button><button class="ghb on" id="vwBtn" type="button">視点 上から</button></div>
 
   <div class="legend">
     <span>← → / A D でハンドル</span>
@@ -331,6 +331,7 @@
     <span>Space＝スタート／やり直し</span>
     <span>P＝やすみ</span>
     <span>G＝ゴースト</span>
+    <span>V＝視点（上から／運転席）</span>
   </div>
 </div>
 
@@ -1554,6 +1555,7 @@
               col: { body: CH().col, lampCore: '#FFE9BC' } };
       camX = s0.x - W/2; camY = s0.y - H/2;
     }
+    cabYaw = car.ang; cabPitch = pitchAt(0);
   }
   function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
@@ -1770,6 +1772,20 @@
   }
   if (ghBtn) ghBtn.addEventListener('click', toggleGh);
 
+  // 視点（上から／運転席）。選んだほうはブラウザに残す
+  var vwBtn = document.getElementById('vwBtn');
+  function syncView(){
+    if (!vwBtn) return;
+    vwBtn.textContent = view === 'cab' ? '視点 運転席' : '視点 上から';
+    vwBtn.title = 'V キーでも切り替え';
+  }
+  function toggleView(){
+    view = view === 'cab' ? 'top' : 'cab';
+    try { localStorage.setItem('wadachi.view', view); } catch(e){}
+    syncView();
+  }
+  if (vwBtn) vwBtn.addEventListener('click', function(){ toggleView(); vwBtn.blur(); });
+
   var volSl = document.getElementById('volSl');
   if (volSl && window.WADACHI_AUDIO){
     volSl.value = Math.round(WADACHI_AUDIO.getVol() * 100);
@@ -1790,6 +1806,7 @@
     }
     if (k === 'p' || k === 'P') { if (st === 'play') setPause(true); else if (st === 'pause') setPause(false); }
     if (k === 'g' || k === 'G') toggleGh();
+    if (k === 'v' || k === 'V') toggleView();
   });
   window.addEventListener('keyup', function(e){ keys[e.key] = false; });
   window.addEventListener('blur', function(){ keys = {}; touchDir = 0; });
@@ -1868,8 +1885,8 @@
     var wr = { x: car.x + rx*13.8 - fx*18, y: car.y + ry*13.8 - fy*18 };
     if (Math.abs(lat) > 34) {
       if (lastWheels) {
-        marks.push({ x1:lastWheels.l.x, y1:lastWheels.l.y, x2:wl.x, y2:wl.y });
-        marks.push({ x1:lastWheels.r.x, y1:lastWheels.r.y, x2:wr.x, y2:wr.y });
+        marks.push({ x1:lastWheels.l.x, y1:lastWheels.l.y, x2:wl.x, y2:wl.y, h:TRACK[idx].h });
+        marks.push({ x1:lastWheels.r.x, y1:lastWheels.r.y, x2:wr.x, y2:wr.y, h:TRACK[idx].h });
         while (marks.length > 1400) marks.shift();
       }
       if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1 });
@@ -1899,6 +1916,7 @@
     var k = Math.min(1, 6.5*dt);
     camX += (tx - camX) * k;
     camY += (ty - camY) * k;
+    followCab(dt);
   }
 
   // ---------- 車を1コマ動かす（自分の車もライバルの車も、この同じ式で走る）----------
@@ -2052,8 +2070,8 @@
       var wl = { x: r.x - rx*13.8 - fx*18, y: r.y - ry*13.8 - fy*18 };
       var wr = { x: r.x + rx*13.8 - fx*18, y: r.y + ry*13.8 - fy*18 };
       if (rivWheels) {
-        marks.push({ x1:rivWheels.l.x, y1:rivWheels.l.y, x2:wl.x, y2:wl.y });
-        marks.push({ x1:rivWheels.r.x, y1:rivWheels.r.y, x2:wr.x, y2:wr.y });
+        marks.push({ x1:rivWheels.l.x, y1:rivWheels.l.y, x2:wl.x, y2:wl.y, h:TRACK[r.idx].h });
+        marks.push({ x1:rivWheels.r.x, y1:rivWheels.r.y, x2:wr.x, y2:wr.y, h:TRACK[r.idx].h });
         while (marks.length > 1400) marks.shift();
       }
       if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1 });
@@ -2159,6 +2177,14 @@
   }
 
   function draw(){
+    if (view === 'cab') {
+      drawCab();
+      drawGhostGap();
+      drawRivalGap();
+      drawSpeed();
+      drawProfile();
+      return;
+    }
     ctx.fillStyle = COL.ground;
     ctx.fillRect(0,0,W,H);
     ctx.fillStyle = COL.groundDot;
@@ -2378,6 +2404,280 @@
     ctx.fillStyle = d <= 0 ? c.col.body : '#E0453A';
     ctx.fillText(txt, W/2, 15.5);
     ctx.restore();
+  }
+
+
+  // ================= 運転席からの視点 =================
+  // コースの点（x, y と高さ h）をそのまま3次元に起こして、運転席の目の高さから見る。
+  // 世界は x（右）・y（下）・z（上）。前は (sin a, -cos a)、右は (cos a, sin a)。
+  var view = 'top';
+  var cabYaw = 0, cabPitch = 0;
+  var EYE = 17;          // 目の高さ（車の全長62≒4.4m なので、約1.2m）
+  var CAB_FOV = 1.25;    // 横の見える角度（ラジアン）
+  var CAB_NEAR = 3;
+  // 視線：ドリフト中は鼻先と進む向きの中間を見る（出口を見る感じ）
+  function followCab(dt){
+    var sp = Math.hypot(car.vx, car.vy), tgt = car.ang;
+    if (sp > 30) tgt = car.ang + wrapA(Math.atan2(car.vx, -car.vy) - car.ang) * 0.55;
+    cabYaw += wrapA(tgt - cabYaw) * Math.min(1, 9 * dt);
+    cabPitch += (pitchAt(idx) - cabPitch) * Math.min(1, 6 * dt);
+  }
+  // 車は坂に沿って前へ傾く。下り（g が＋）は鼻先が下がる
+  function pitchAt(i){ var t = TRACK[i] || TRACK[0]; return -0.075 - Math.atan(t.g); }
+
+  // 色を夜の暗さへ溶かす（t=0 そのまま、1 で真っ暗）
+  function fogC(rgb, t){
+    var k = 1 - Math.max(0, Math.min(1, t));
+    return 'rgb(' + Math.round(14 + (rgb[0]-14)*k) + ',' + Math.round(16 + (rgb[1]-16)*k) + ',' + Math.round(21 + (rgb[2]-21)*k) + ')';
+  }
+  function rgbOf(hex){ var n = parseInt(hex.slice(1), 16); return [(n>>16)&255, (n>>8)&255, n&255]; }
+  var RGB_ROAD = [44,46,54], RGB_EDGE = [200,196,184], RGB_WALL = [58,46,38], RGB_RAIL = [88,86,84], RGB_CEN = [110,106,96];
+
+  // カメラ cam から見た座標へ
+  function toC(cam, x, y, z){
+    var dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
+    var Z = dx*cam.fx + dy*cam.fy, X = dx*cam.rx + dy*cam.ry;
+    return { X:X, Y: dz*cam.cp - Z*cam.sp, Z: Z*cam.cp + dz*cam.sp };
+  }
+  // 手前で切れる多角形を、見える分だけにして画面へ
+  function polyC(vp, pts, fill, seam){
+    var out = [], i, a, b;
+    for (i = 0; i < pts.length; i++){
+      a = pts[i]; b = pts[(i+1) % pts.length];
+      var ain = a.Z >= CAB_NEAR, bin = b.Z >= CAB_NEAR;
+      if (ain) out.push(a);
+      if (ain !== bin){
+        var t = (CAB_NEAR - a.Z) / (b.Z - a.Z);
+        out.push({ X:a.X + (b.X-a.X)*t, Y:a.Y + (b.Y-a.Y)*t, Z:CAB_NEAR });
+      }
+    }
+    if (out.length < 3) return;
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    for (i = 0; i < out.length; i++){
+      var sx = vp.cx + (vp.flip ? -1 : 1) * out[i].X * vp.F / out[i].Z;
+      var sy = vp.hor - out[i].Y * vp.F / out[i].Z;
+      if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy);
+    }
+    ctx.closePath(); ctx.fill();
+    // 区間どうしの継ぎ目に細い隙間が見えるので、同じ色で縁をなぞって埋める
+    if (seam) { ctx.strokeStyle = fill; ctx.lineWidth = 0.9; ctx.stroke(); }
+  }
+  function makeCam(x, y, z, yaw, pitch){
+    return { x:x, y:y, z:z, fx:Math.sin(yaw), fy:-Math.cos(yaw), rx:Math.cos(yaw), ry:Math.sin(yaw),
+             cp:Math.cos(pitch), sp:Math.sin(pitch), yaw:yaw, pitch:pitch };
+  }
+
+  // 箱（車体・屋根）。見えている面だけ、明るさを変えて塗る
+  function boxC(cam, vp, x, y, z0, ang, fwd0, fwd1, half, z1, rgb, fogT){
+    var fx = Math.sin(ang), fy = -Math.cos(ang), rx = Math.cos(ang), ry = Math.sin(ang);
+    function P(f, r, z){ return toC(cam, x + fx*f + rx*r, y + fy*f + ry*r, z); }
+    var c = [P(fwd1,-half,z0), P(fwd1,half,z0), P(fwd0,half,z0), P(fwd0,-half,z0),
+             P(fwd1,-half,z1), P(fwd1,half,z1), P(fwd0,half,z1), P(fwd0,-half,z1)];
+    // 面：[頂点, 外向きの向き(世界), 明るさ, 面の中心(前後, 左右)]
+    var faces = [
+      [[0,1,5,4], [fx,fy],   0.80, fwd1, 0],     // 前
+      [[3,2,6,7], [-fx,-fy], 0.62, fwd0, 0],     // 後ろ
+      [[1,2,6,5], [rx,ry],   0.70, (fwd0+fwd1)/2, half],    // 右
+      [[0,3,7,4], [-rx,-ry], 0.70, (fwd0+fwd1)/2, -half]    // 左
+    ];
+    for (var k = 0; k < faces.length; k++){
+      var fc = faces[k], n = fc[1];
+      var mx = x + fx*fc[3] + rx*fc[4] - cam.x, my = y + fy*fc[3] + ry*fc[4] - cam.y;
+      if (mx*n[0] + my*n[1] >= 0) continue;      // 裏を向いている面は描かない
+      var sh = fc[2];
+      polyC(vp, [c[fc[0][0]], c[fc[0][1]], c[fc[0][2]], c[fc[0][3]]],
+            fogC([rgb[0]*sh, rgb[1]*sh, rgb[2]*sh], fogT));
+    }
+    if (cam.z > z1) polyC(vp, [c[4], c[5], c[6], c[7]], fogC(rgb, fogT));   // 上の面
+  }
+  // 車1台（車体＋屋根＋尾灯）
+  function car3(cam, vp, c, hex, alpha){
+    var ti = Math.max(0, Math.min(TRACK.length-1, c.idx || 0));
+    var z = TRACK[ti].h, d = Math.hypot(c.x - cam.x, c.y - cam.y);
+    var fogT = Math.min(0.85, d / 1500), rgb = rgbOf(hex);
+    ctx.globalAlpha = alpha;
+    boxC(cam, vp, c.x, c.y, z + 2, c.ang, -30, 30, 14.5, z + 11, rgb, fogT);
+    boxC(cam, vp, c.x, c.y, z + 11, c.ang, -18, 8, 11.5, z + 19, [rgb[0]*0.55, rgb[1]*0.55, rgb[2]*0.55], fogT);
+    // 尾灯（後ろから見えるときだけ）
+    var fx = Math.sin(c.ang), fy = -Math.cos(c.ang), rx = Math.cos(c.ang), ry = Math.sin(c.ang);
+    if ((c.x - fx*30 - cam.x)*(-fx) + (c.y - fy*30 - cam.y)*(-fy) < 0){
+      for (var sd = -1; sd <= 1; sd += 2){
+        var bx = c.x - fx*30.5 + rx*sd*10, by = c.y - fy*30.5 + ry*sd*10;
+        polyC(vp, [toC(cam, bx - rx*3.5, by - ry*3.5, z + 6), toC(cam, bx + rx*3.5, by + ry*3.5, z + 6),
+                   toC(cam, bx + rx*3.5, by + ry*3.5, z + 9.5), toC(cam, bx - rx*3.5, by - ry*3.5, z + 9.5)], '#FF3B30');
+      }
+    }
+    // 前照灯（前から見えるときだけ。ミラーに映る後ろの車）
+    if ((c.x + fx*30 - cam.x)*fx + (c.y + fy*30 - cam.y)*fy < 0){
+      for (var sd2 = -1; sd2 <= 1; sd2 += 2){
+        var hx = c.x + fx*30.5 + rx*sd2*9, hy = c.y + fy*30.5 + ry*sd2*9;
+        polyC(vp, [toC(cam, hx - rx*4, hy - ry*4, z + 5), toC(cam, hx + rx*4, hy + ry*4, z + 5),
+                   toC(cam, hx + rx*4, hy + ry*4, z + 8.5), toC(cam, hx - rx*4, hy - ry*4, z + 8.5)], '#FFE9BC');
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 景色を1枚描く（本画面とルームミラーで使い回す）
+  function scene(cam, vp){
+    var i, k;
+    // 空と遠くの山（向きに合わせて流れる）
+    var hz = vp.hor + Math.tan(cam.pitch) * vp.F;
+    var g = ctx.createLinearGradient(0, vp.y, 0, Math.max(vp.y + 1, hz));
+    g.addColorStop(0, '#05060A'); g.addColorStop(1, '#171A26');
+    ctx.fillStyle = g; ctx.fillRect(vp.x, vp.y, vp.w, Math.max(0, hz - vp.y));
+    ctx.fillStyle = COL.ground; ctx.fillRect(vp.x, hz, vp.w, Math.max(0, vp.y + vp.h - hz));
+    ctx.fillStyle = '#0B0D13';
+    ctx.beginPath(); ctx.moveTo(vp.x, hz);
+    for (k = 0; k <= vp.w; k += 4){
+      var an = cam.yaw + (vp.flip ? -1 : 1) * (vp.x + k - vp.cx) / vp.F;
+      var mh = 10 + 9*Math.sin(an*3.1) + 6*Math.sin(an*7.3 + 1.3) + 3*Math.sin(an*17.0);
+      ctx.lineTo(vp.x + k, hz - mh * vp.F / 160);
+    }
+    ctx.lineTo(vp.x + vp.w, hz); ctx.closePath(); ctx.fill();
+
+    // 道：近くの点を3次元に起こし、遠い区間から順に塗る
+    var i0 = Math.max(0, idx - 90), i1 = Math.min(TRACK.length - 1, idx + 170);
+    var C = [], N = [];
+    for (i = i0; i <= i1; i++){
+      var t = TRACK[i];
+      C.push(toC(cam, t.x, t.y, t.h));
+      N.push(toC(cam, cam.x + t.nx, cam.y + t.ny, cam.z));   // 右向き1の、カメラから見た向き
+    }
+    function off(j, o, dz){
+      var a = C[j], n = N[j], up = dz || 0;
+      return { X:a.X + n.X*o, Y:a.Y + n.Y*o + up*cam.cp, Z:a.Z + n.Z*o + up*cam.sp };
+    }
+    var segs = [];
+    for (i = 0; i < C.length - 1; i++){
+      if (C[i].Z < -80 && C[i+1].Z < -80) continue;     // 完全に背中側
+      // 見える角度から大きく外れている区間も描かない（スマホで重くならないように）
+      var lim0 = Math.max(0, C[i].Z) * vp.wide + 160, lim1 = Math.max(0, C[i+1].Z) * vp.wide + 160;
+      if ((C[i].X > lim0 && C[i+1].X > lim1) || (C[i].X < -lim0 && C[i+1].X < -lim1)) continue;
+      var dep = (C[i].Z + C[i+1].Z) / 2;
+      if (dep > 2600) continue;
+      segs.push([dep, i]);
+    }
+    segs.sort(function(a, b){ return b[0] - a[0]; });
+    var WO = HALF + WALL, EO = HALF + 2.5, j, ft, ti2;
+    // 地面に貼りつくもの（路肩→白線→路面）は、上から見た絵と同じく「種類ごと」に重ねる。
+    // 区間ごとに奥から塗ると、ヘアピンで隣り合う道の路肩が手前の路面に被さってしまう。
+    function each(fn){
+      for (var q = 0; q < segs.length; q++){
+        j = segs[q][1]; ft = Math.max(0, segs[q][0]) / 1300; ti2 = i0 + j;
+        fn();
+      }
+    }
+    each(function(){   // 路肩（土）
+      polyC(vp, [off(j,-WO), off(j+1,-WO), off(j+1,WO), off(j,WO)], fogC(RGB_WALL, ft), true);
+    });
+    each(function(){   // 白線
+      polyC(vp, [off(j,-EO), off(j+1,-EO), off(j+1,EO), off(j,EO)], fogC(RGB_EDGE, ft), true);
+    });
+    each(function(){   // 路面（上から見たときの坂の色づけと同じく、下りは水色・上りは橙を薄く混ぜる）
+      var gg = TRACK[ti2].g, rr = RGB_ROAD;
+      var tint = Math.min(0.13, Math.abs(gg) * 0.75);
+      var rc = gg >= 0 ? [rr[0] + (95-rr[0])*tint, rr[1] + (211-rr[1])*tint, rr[2] + (224-rr[2])*tint]
+                       : [rr[0] + (240-rr[0])*tint, rr[1] + (135-rr[1])*tint, rr[2] + (58-rr[2])*tint];
+      polyC(vp, [off(j,-HALF), off(j+1,-HALF), off(j+1,HALF), off(j,HALF)], fogC(rc, ft), true);
+      // 中央の破線（コース上の距離で決めるので、走っても模様がずれない）
+      if (Math.round(TRACK[ti2].d / STEP) % 4 < 2)
+        polyC(vp, [off(j,-1), off(j+1,-1), off(j+1,1), off(j,1)], fogC(RGB_CEN, ft));
+      // スタートとゴールの線
+      if (ti2 === 0 || ti2 === TRACK.length - 2)
+        polyC(vp, [off(j,-HALF), off(j+1,-HALF), off(j+1,HALF), off(j,HALF)], ti2 === 0 ? 'rgba(232,228,216,0.75)' : 'rgba(95,211,224,0.8)');
+    });
+    each(function(){   // ガードレール（壁の位置。低い板）は立っているので最後に、奥から
+      polyC(vp, [off(j,-WO), off(j+1,-WO), off(j+1,-WO,8), off(j,-WO,8)], fogC(RGB_RAIL, ft + 0.2), true);
+      polyC(vp, [off(j,WO), off(j+1,WO), off(j+1,WO,8), off(j,WO,8)], fogC(RGB_RAIL, ft + 0.2), true);
+    });
+
+    // 轍（路面に黒く）。線の太さで描くと手前で太りすぎるので、路面に貼った細い帯にする
+    for (k = 0; vp.marks && k < marks.length; k++){
+      var mk = marks[k];
+      if (Math.abs(mk.x1 - cam.x) > 900 || Math.abs(mk.y1 - cam.y) > 900) continue;
+      var hh = (mk.h !== undefined ? mk.h : 0) + 0.4;
+      var ddx = mk.x2 - mk.x1, ddy = mk.y2 - mk.y1, dl = Math.hypot(ddx, ddy);
+      if (dl < 0.01) continue;
+      var px = -ddy / dl * 3, py = ddx / dl * 3;
+      polyC(vp, [toC(cam, mk.x1 - px, mk.y1 - py, hh), toC(cam, mk.x2 - px, mk.y2 - py, hh),
+                 toC(cam, mk.x2 + px, mk.y2 + py, hh), toC(cam, mk.x1 + px, mk.y1 + py, hh)], 'rgba(0,0,0,0.42)');
+    }
+
+    // 車（遠いものから）
+    var cars = [];
+    if (story && riv) cars.push({ c: riv, col: riv.col.body, a: 1 });
+    if (!story && st === 'play'){
+      var gc = curGhost();
+      if (gc){
+        ghost = gc.arr;
+        var gp = ghostPose(time);
+        if (gp){
+          var gi = Math.min(gc.arr.length/4 - 1, Math.floor(time / GH_DT));
+          cars.push({ c: { x:gp.x, y:gp.y, ang:gp.ang, idx: gc.arr[gi*4+3] }, col: gc.col.body, a: 0.38 });
+        }
+      }
+    }
+    for (k = 0; k < cars.length; k++) cars[k].d = Math.hypot(cars[k].c.x - cam.x, cars[k].c.y - cam.y);
+    cars.sort(function(a, b){ return b.d - a.d; });
+    for (k = 0; k < cars.length; k++) car3(cam, vp, cars[k].c, cars[k].col, cars[k].a);
+  }
+
+  function drawCab(){
+    var fx = Math.sin(car.ang), fy = -Math.cos(car.ang);
+    var rx = Math.cos(car.ang), ry = Math.sin(car.ang);
+    var ez = (TRACK[idx] ? TRACK[idx].h : 0) + EYE;
+    // 目の位置：車の中心から少し前、右ハンドルなので少し右
+    var ex = car.x + fx*2 + rx*5, ey = car.y + fy*2 + ry*5;
+    var F = (W/2) / Math.tan(CAB_FOV/2);
+    ctx.save();
+    scene(makeCam(ex, ey, ez, cabYaw, cabPitch), { x:0, y:0, w:W, h:H, cx:W/2, hor:H*0.42, F:F, flip:false, wide:(W/2)/F, marks:true });
+    ctx.restore();
+
+    // ボンネット（自分の車の色）
+    var hg = ctx.createLinearGradient(0, H*0.74, 0, H);
+    hg.addColorStop(0, shade(COL.body, 0.05)); hg.addColorStop(1, shade(COL.body, -0.35));
+    ctx.fillStyle = hg;
+    ctx.beginPath();
+    ctx.moveTo(-10, H); ctx.lineTo(W*0.20, H*0.775); ctx.quadraticCurveTo(W/2, H*0.745, W*0.80, H*0.775);
+    ctx.lineTo(W+10, H); ctx.closePath(); ctx.fill();
+    // ダッシュボード
+    ctx.fillStyle = '#0A0B0F';
+    ctx.beginPath();
+    ctx.moveTo(0, H*0.86); ctx.quadraticCurveTo(W/2, H*0.83, W, H*0.86); ctx.lineTo(W, H); ctx.lineTo(0, H);
+    ctx.closePath(); ctx.fill();
+    // ピラー（窓の枠）
+    ctx.fillStyle = '#07080B';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(14, 0); ctx.lineTo(4, H*0.86); ctx.lineTo(0, H*0.86); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W-14, 0); ctx.lineTo(W-4, H*0.86); ctx.lineTo(W, H*0.86); ctx.closePath(); ctx.fill();
+    ctx.fillRect(0, 0, W, 4);
+    // ハンドル（切っているぶん回る）
+    ctx.save();
+    ctx.translate(W*0.5, H*0.99);
+    ctx.rotate(steerV * 1.9);
+    ctx.strokeStyle = '#1C1E25'; ctx.lineWidth = 9;
+    ctx.beginPath(); ctx.arc(0, 0, 52, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = '#2A2D36'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 52, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = '#1C1E25'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(-50, 0); ctx.lineTo(50, 0); ctx.stroke();
+    ctx.fillStyle = '#F0873A';
+    ctx.fillRect(-2, -56, 4, 8);         // 真上の印
+    ctx.restore();
+
+    // ルームミラー（後ろ。ライバルが迫ってくるのが見える）
+    var mw = 92, mh = 30, mx = W/2 - mw/2, my = 24;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip();
+    var Fm = (mw/2) / Math.tan(0.55);
+    scene(makeCam(car.x, car.y, ez + 2, cabYaw + Math.PI, -0.05), { x:mx, y:my, w:mw, h:mh, cx:W/2, hor:my + mh*0.55, F:Fm, flip:true, wide:(mw/2)/Fm, marks:false });
+    ctx.restore();
+    ctx.strokeStyle = '#1A1C22'; ctx.lineWidth = 3;
+    ctx.strokeRect(mx - 1, my - 1, mw + 2, mh + 2);
+
+    // 壁やライバルに当たった瞬間は、画面を薄く赤く
+    if (hitT > 0){ ctx.fillStyle = 'rgba(224,69,58,' + Math.min(0.25, hitT*0.5).toFixed(2) + ')'; ctx.fillRect(0, 0, W, H); }
   }
 
   function drawGate(s, color){
@@ -2661,6 +2961,8 @@ function shade(hex, k){
     loadBest();
     loadStory();
     loadMyCol();
+    try { if (localStorage.getItem('wadachi.view') === 'cab') view = 'cab'; } catch(e){}
+    syncView();
     syncGh();
     if (saved && saved.best && (!best || saved.best < best)) { best = saved.best; saveBest(); }
     layout();
