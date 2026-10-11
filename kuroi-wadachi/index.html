@@ -155,6 +155,9 @@
     background:rgba(8,9,13,.92);line-height:1.75;
   }
   .veil.off{display:none}
+  /* 項目が増えて画面に収まらないときは、幕の中だけ縦に送れるようにする */
+  .veil{overflow-y:auto;justify-content:safe center}
+  .veil > *{flex-shrink:0}
 
   /* ===== 順位表 ===== */
   .lb{
@@ -247,6 +250,13 @@
   }
   .rpui button.on{color:var(--amber-hi);border-color:rgba(255,194,122,.6)}
   .rpui button:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+  .veil .dirrow{display:inline-flex;gap:6px}
+  .veil .dirb{
+    font:inherit;font-size:12.5px;font-weight:700;line-height:1.2;padding:4px 10px;cursor:pointer;
+    color:var(--dim);background:transparent;border:1px solid var(--line);border-radius:2px;
+  }
+  .veil .dirb.on{color:var(--amber);border-color:var(--amber)}
+  .veil .dirb:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
   .veil .rprow{display:inline-flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:2px}
   .veil .rpb{
     font:inherit;font-size:13px;font-weight:700;line-height:1.2;padding:6px 11px;cursor:pointer;
@@ -354,7 +364,7 @@
     </div>
   </div>
 
-  <div class="vol"><span>SOUND</span><input id="volSl" type="range" min="0" max="100" step="5" value="50" aria-label="音量"><button class="ghb" id="ghBtn" type="button" aria-pressed="true">GHOST</button><button class="ghb on" id="vwBtn" type="button">視点 上から</button></div>
+  <div class="vol"><span>SOUND</span><input id="volSl" type="range" min="0" max="100" step="5" value="50" aria-label="音量"><button class="ghb" id="ghBtn" type="button" aria-pressed="true">GHOST</button><button class="ghb on" id="vwBtn" type="button">視点 上から</button><button class="ghb on" id="wxBtn" type="button">天気 晴れ</button><button class="ghb" id="tiltBtn" type="button" hidden>傾き 切</button></div>
 
   <div class="legend">
     <span>← → / A D でハンドル</span>
@@ -1158,6 +1168,8 @@
       ['S',190],['R',92,110],['S',130],['L',66,160],['S',280]
     ]}
   ];
+  // 上り（逆走）：同じ道を反対の向きから走る。坂の上り下りも、曲がる順番も入れ替わる
+  for (var ci = 0; ci < 3; ci++) COURSES.push({ name: COURSES[ci].name, tag: '上り', segs: COURSES[ci].segs, rev: true, base: ci });
   // ---------- 物語（ライバルと1対1で勝負していく）----------
   // c: コース番号 / P: 運転のしかた / pow・top: 強さ。node で全コースを走らせて選んだ。
   //   単独で走ったときのタイムを () に書いておく（ぶつかり合いが無ければ だいたいこの速さ）。
@@ -1227,10 +1239,10 @@
   var TRACK = [], TRACKLEN = 0, STEP = 7;
 
   function buildTrack(){
-    var COURSE = COURSES[courseIdx].segs;
+    var CO = COURSES[courseIdx], COURSE = CO.segs;
     TRACK.length = 0;
     var x = 0, y = 0, a = 0, d = 0;      // a: 進行方向（0=上, 正=右回り）
-    var HL = HILL[courseIdx];
+    var HL = HILL[CO.rev ? CO.base : courseIdx];
     function push(){
       var p1 = d / HL.l1, p2 = d / HL.l2 + 2.1;
       TRACK.push({
@@ -1260,6 +1272,16 @@
       }
     }
     TRACKLEN = d;
+    if (CO.rev) {
+      // 上り：点の並びを逆にし、向きを反対に。高さはそのままなので、勾配の符号が入れ替わる
+      var R = [];
+      for (var ri = TRACK.length - 1; ri >= 0; ri--){
+        var p = TRACK[ri], ra = p.a + Math.PI;
+        R.push({ x:p.x, y:p.y, a:ra, d:TRACKLEN - p.d, nx:Math.cos(ra), ny:Math.sin(ra), h:p.h, g:-p.g, dg:p.dg });
+      }
+      TRACK.length = 0;
+      for (ri = 0; ri < R.length; ri++) TRACK.push(R[ri]);
+    }
     buildProfile();
     buildCheckpoints();
   }
@@ -1359,6 +1381,50 @@
   var rivWheels = null, bumpT = 0;
   function CH(){ return CHAPTERS[chap]; }
 
+  // ---------- 天気・車の仕上げ・競うもの ----------
+  // 天気：晴れ／雨（滑りやすい）／霧（先が見えない）。車の仕上げは物語を全部勝ち抜くと選べる。
+  // 晴れ・標準の車の走りだけを、ベストと順位表に残す（条件が違うと比べられないため）。
+  var weather = 'clear', tune = 'std', mode = 'time';
+  var WGRIP = 1;
+  var WXNAME = { clear:'晴れ', rain:'雨', fog:'霧' };
+  var TUNES = {
+    std:   { name:'標準',     note:'' },
+    turn:  { name:'曲がり重視', note:'よく曲がり、よく踏ん張る。最高速は少し低い', turnK:1.12, gripK:1.10, top:270 },
+    speed: { name:'速さ重視',   note:'加速と最高速が上。そのぶん滑りやすい',         pow:1.12,  gripK:0.92, top:310 }
+  };
+  function isRanked(){ return weather === 'clear' && tune === 'std'; }
+  function applyTune(c){
+    var t = TUNES[tune] || TUNES.std;
+    c.turnK = t.turnK || 0; c.gripK = t.gripK || 0; c.pow = t.pow || 0; c.top = t.top || 0;
+  }
+  function setWeather(w){
+    weather = WXNAME[w] ? w : 'clear';
+    WGRIP = weather === 'rain' ? 0.82 : 1;
+    try { localStorage.setItem('wadachi.weather', weather); } catch(e){}
+  }
+  function loadOpts(){
+    var w = null, t = null, m = null;
+    try { w = localStorage.getItem('wadachi.weather'); t = localStorage.getItem('wadachi.tune'); m = localStorage.getItem('wadachi.mode'); } catch(e){}
+    setWeather(w || 'clear');
+    tune = (cleared >= CHAPTERS.length && TUNES[t]) ? t : 'std';
+    mode = m === 'drift' ? 'drift' : 'time';
+  }
+  function boardKey(){ return (mode === 'drift' ? 'wadachi-d' : 'wadachi-') + (courseIdx + 1); }
+  function driftBest(){ try { return parseInt(localStorage.getItem('wadachi.drift.' + courseIdx), 10) || 0; } catch(e){ return 0; } }
+  function tuneRow(){
+    if (cleared < CHAPTERS.length) return '';
+    var h = '';
+    for (var k in TUNES) h += '<button type="button" class="dirb' + (tune === k ? ' on' : '') + '" data-tune="' + k + '">' + TUNES[k].name + '</button>';
+    return '<br><span class="gh">車の仕上げ' + (TUNES[tune].note ? '：' + TUNES[tune].note : '') + '</span><br><span class="dirrow">' + h + '</span>';
+  }
+  function condNote(){
+    if (isRanked()) return '';
+    var why = [];
+    if (weather !== 'clear') why.push(WXNAME[weather]);
+    if (tune !== 'std') why.push(TUNES[tune].name);
+    return '<br><span class="gh" style="color:#FFC27A">' + why.join('・') + 'の走りは、ベストと順位表には残りません</span>';
+  }
+
   // 車の色（物語を全部勝ち抜くと選べる）。はじめの橙と、勝ち抜いた10人の車の色。
   var MYCOL0 = '#F0873A';
   function palette(){
@@ -1403,17 +1469,17 @@
   var GH_DT = 0.05;                    // 0.05秒ごとに位置を控える（毎秒20回）
   var rec = [];                        // いま走っている記録 x,y,向き,通過点
   var ghost = null;                    // 手本にする記録
-  var ghosts = [null,null,null];
-  var ghostT = [0,0,0];                // その手本を出したときのタイム
+  var ghosts = [null,null,null,null,null,null];   // 下り3本＋上り3本
+  var ghostT = [0,0,0,0,0,0];                // その手本を出したときのタイム
   // 0=切 1=自己ベスト 2=順位表1位
   var ghostMode = 1;
-  var topG = [null,null,null];         // 順位表1位の走り {name, score, arr}
+  var topG = [null,null,null,null,null,null];         // 順位表1位の走り {name, score, arr}
   var GAPI = 'https://game-scores.pdylplplp.workers.dev';
   var GCOL  = { body:'#5FD3E0', lampCore:'#CFEFF5' };   // 自分のベスト
   var GCOL2 = { body:'#E8C07A', lampCore:'#FFEBC4' };   // 1位の人
 
   function loadGhosts(){
-    for (var i=0;i<3;i++){
+    for (var i=0;i<6;i++){
       try {
         var v = localStorage.getItem('wadachi.ghost.' + i);
         ghosts[i] = v ? JSON.parse(v) : null;
@@ -1541,7 +1607,7 @@
   function resetIfOldRules(){
     try {
       if (localStorage.getItem('wadachi.rules') === RULES) return false;
-      for (var i = 0; i < 3; i++){
+      for (var i = 0; i < 6; i++){
         localStorage.removeItem('wadachi.time.' + i);
         localStorage.removeItem('wadachi.ghost.' + i);
         localStorage.removeItem('wadachi.ghostT.' + i);
@@ -1551,10 +1617,10 @@
     } catch(e){ return false; }
   }
 
-  var bests = [0,0,0];
+  var bests = [0,0,0,0,0,0];
   function loadBest(){
     try {
-      for (var i=0;i<3;i++){ var v = localStorage.getItem('wadachi.time.'+i); if (v) bests[i] = parseFloat(v)||0; }
+      for (var i=0;i<6;i++){ var v = localStorage.getItem('wadachi.time.'+i); if (v) bests[i] = parseFloat(v)||0; }
     } catch(e){}
     best = bests[courseIdx];
     loadGhosts();
@@ -1592,22 +1658,29 @@
     resetChase();
   }
   function startGame(){ if (window.SCOREBOARD) SCOREBOARD.hide();
-    if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
-    reset(); st = 'count'; countT = 3.2; countEl.classList.remove('off'); veil.classList.add('off'); lastT = 0; }
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx % 3);
+    reset(); st = 'count'; countT = 3.2; countEl.classList.remove('off'); veil.classList.add('off'); lastT = 0;
+    if (tiltOn && tiltSeen) tiltZero = tiltNow; }
   var wiped = false;
   function showTitle(){
     if (story) { showStory(); return; }
     ending = false;
     st = 'title'; reset();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
-    if (window.SCOREBOARD) SCOREBOARD.top('wadachi-' + (courseIdx + 1));
+    if (window.SCOREBOARD) SCOREBOARD.top(boardKey());
     var c = COURSES[courseIdx];
     veilTitle.textContent = 'TOUGE TIME ATTACK';
-    veilBody.innerHTML = '<span class="course">' + c.name + '　<em>' + c.tag + '　全長 ' + Math.round(TRACKLEN) + '</em></span><br>' +
+    veilBody.innerHTML = '<span class="dirrow"><button type="button" class="dirb' + (c.rev ? '' : ' on') + '" data-dir="0">▼ 下り</button>' +
+      '<button type="button" class="dirb' + (c.rev ? ' on' : '') + '" data-dir="1">▲ 上り</button></span>　' +
+      '<span class="dirrow"><button type="button" class="dirb' + (mode === 'time' ? ' on' : '') + '" data-mode="time">タイム</button>' +
+      '<button type="button" class="dirb' + (mode === 'drift' ? ' on' : '') + '" data-mode="drift">ドリフト点</button></span><br>' +
+      '<span class="course">' + c.name + '　<em>' + c.tag + '　全長 ' + Math.round(TRACKLEN) + '</em></span><br>' +
       '左右だけ。アクセルは自動、ブレーキは無い。<br>' +
       'ヘアピンは曲がりきれない。<br><b>滑らせて速度を落とす</b>のが唯一の減速。<br>' +
       '<span class="gh">' + ghostLine() + '</span>' +
-      (wiped ? '<br><span class="gh" style="color:#F0873A">走り方を変えたので、前の決まりで出した記録は消しました</span>' : '') + replayRow();
+      (wiped ? '<br><span class="gh" style="color:#F0873A">走り方を変えたので、前の決まりで出した記録は消しました</span>' : '') +
+      (mode === 'drift' ? '<br><span class="gh">ドリフト点で競う　自己ベスト ' + driftBest().toLocaleString('ja-JP') + ' 点</span>' : '') +
+      condNote() + replayRow();
     goBtn.textContent = 'スタート';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1632,7 +1705,24 @@
       countEl.classList.add('off');
       return;
     }
-    if (window.SCOREBOARD) SCOREBOARD.over('wadachi-' + (courseIdx + 1), time);
+    if (!isRanked()) {
+      if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(false); }
+      veilTitle.textContent = 'GOAL';
+      veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
+        '<span class="big">' + (mode === 'drift' ? score.toLocaleString('ja-JP') : fmt(time)) + '</span><br>' +
+        '<span class="sub">' + (mode === 'drift' ? 'TIME ' + fmt(time) : 'ドリフト ' + score.toLocaleString('ja-JP') + ' 点') + '</span>' +
+        condNote() + replayRow();
+      goBtn.textContent = 'もういちど';
+      veil.classList.remove('off');
+      countEl.classList.add('off');
+      return;
+    }
+    if (window.SCOREBOARD) SCOREBOARD.over(boardKey(), mode === 'drift' ? score : time);
+    var dNew = false;
+    if (mode === 'drift' && score > driftBest()) {
+      dNew = true;
+      try { localStorage.setItem('wadachi.drift.' + courseIdx, String(score)); } catch(e){}
+    }
     var isNew = (best === 0 || time < best);
     if (isNew) { best = time; saveBest(); }
     // 手本がまだ無ければ、ベスト更新でなくてもこの1本を手本にする。
@@ -1641,10 +1731,17 @@
     sendGhost(time);
     if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(isNew); }
     veilTitle.textContent = 'GOAL';
-    veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
-      '<span class="big">' + fmt(time) + '</span><br>' +
-      '<span class="sub">' + (isNew ? 'NEW BEST' : 'BEST ' + fmt(best)) + '</span><br>' +
-      'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + replayRow();
+    if (mode === 'drift') {
+      veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
+        '<span class="big">' + score.toLocaleString('ja-JP') + '</span><br>' +
+        '<span class="sub">' + (dNew ? 'NEW BEST' : 'BEST ' + driftBest().toLocaleString('ja-JP')) + '</span><br>' +
+        'タイム ' + fmt(time) + (isNew ? '（ベスト更新）' : '') + replayRow();
+    } else {
+      veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
+        '<span class="big">' + fmt(time) + '</span><br>' +
+        '<span class="sub">' + (isNew ? 'NEW BEST' : 'BEST ' + fmt(best)) + '</span><br>' +
+        'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + replayRow();
+    }
     goBtn.textContent = 'もういちど';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1663,7 +1760,7 @@
     var btns = tabsEl.getElementsByTagName('button');
     for (var k=0;k<btns.length;k++){
       var isS = btns[k].getAttribute('data-c') === 's';
-      btns[k].classList.toggle('on', story ? isS : (!isS && k === courseIdx));
+      btns[k].classList.toggle('on', story ? isS : (!isS && k === courseIdx % 3));
     }
     prev = {};
     showTitle();
@@ -1674,7 +1771,7 @@
     if (!b || b === tabsEl) return;
     var v = b.getAttribute('data-c');
     if (v === 's') { story = true; setCourse(CH().c); }
-    else { story = false; setCourse(parseInt(v, 10)); }
+    else { story = false; setCourse(parseInt(v, 10) + (courseIdx >= 3 ? 3 : 0)); }   // 上りを選んでいたら上りのまま
   });
 
   // ---------- 物語の画面 ----------
@@ -1703,7 +1800,7 @@
       '<span class="gh">並んでスタート。相手より先にゴールすれば勝ち。車はぶつかる。</span>' +
       (cleared > chap ? '<br><span class="gh">勝ち抜き済み</span>' : '') +
       (cleared >= CHAPTERS.length ? '<br><button type="button" class="nav endbtn" data-end="1">エンディングを見る</button>' : '') +
-      colorRow();
+      colorRow() + tuneRow() + condNote();
     goBtn.textContent = 'バトル開始';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1782,6 +1879,17 @@
   veilBody.addEventListener('click', function(e){
     var b = e.target;
     if (b && b.getAttribute && b.getAttribute('data-replay')) { startReplay(b.getAttribute('data-replay')); return; }
+    if (b && b.getAttribute && b.getAttribute('data-mode')) {
+      mode = b.getAttribute('data-mode') === 'drift' ? 'drift' : 'time';
+      try { localStorage.setItem('wadachi.mode', mode); } catch(e2){}
+      showTitle(); return;
+    }
+    if (b && b.getAttribute && b.getAttribute('data-tune')) {
+      if (TUNES[b.getAttribute('data-tune')]) tune = b.getAttribute('data-tune');
+      try { localStorage.setItem('wadachi.tune', tune); } catch(e3){}
+      showStory(); return;
+    }
+    if (b && b.getAttribute && b.getAttribute('data-dir')) { setCourse(courseIdx % 3 + (b.getAttribute('data-dir') === '1' ? 3 : 0)); return; }
     if (b && b.getAttribute && b.getAttribute('data-col')) {
       setMyCol(b.getAttribute('data-col'), true);
       showStory();
@@ -1827,6 +1935,15 @@
     layout();
   }
   if (vwBtn) vwBtn.addEventListener('click', function(){ toggleView(); vwBtn.blur(); });
+  var wxBtn = document.getElementById('wxBtn');
+  function syncWx(){ if (wxBtn) { wxBtn.textContent = '天気 ' + WXNAME[weather]; wxBtn.title = '晴れ→雨→霧（W キーでも）'; } }
+  function cycleWx(){
+    if (st === 'play' || st === 'count') return;          // 走っている途中では変えない
+    setWeather(weather === 'clear' ? 'rain' : weather === 'rain' ? 'fog' : 'clear');
+    syncWx();
+    if (st === 'title') showTitle();
+  }
+  if (wxBtn) wxBtn.addEventListener('click', function(){ cycleWx(); wxBtn.blur(); });
 
   var volSl = document.getElementById('volSl');
   if (volSl && window.WADACHI_AUDIO){
@@ -1850,6 +1967,7 @@
     if (k === 'g' || k === 'G') toggleGh();
     if (k === 'v' || k === 'V') { if (st === 'replay') cycleRview(); else toggleView(); }
     if ((k === 's' || k === 'S') && st === 'replay') toggleSlow();
+    if (k === 'w' || k === 'W') cycleWx();
     if (k === 'Escape' && st === 'replay') endReplay();
   });
   window.addEventListener('keyup', function(e){ keys[e.key] = false; });
@@ -1873,8 +1991,56 @@
     if (keys['ArrowLeft']  || keys['a'] || keys['A']) d -= 1;
     if (keys['ArrowRight'] || keys['d'] || keys['D']) d += 1;
     if (d === 0) d = touchDir;
+    if (d === 0 && tiltOn) d = tiltDir();
     return d;
   }
+
+  // ---------- スマホを傾けてハンドル ----------
+  // スタートの瞬間の傾きを「まっすぐ」とし、そこから左右へ傾けた角度で切る。
+  // 少しの傾きは無視し（4度まで）、22度で目いっぱい。押している長さではなく角度で切れる。
+  var tiltOn = false, tiltNow = 0, tiltZero = 0, tiltSeen = false;
+  var tiltBtn = document.getElementById('tiltBtn');
+  function tiltDir(){
+    if (!tiltSeen) return 0;
+    var v = tiltNow - tiltZero, a = Math.abs(v);
+    if (a < 4) return 0;
+    return (v > 0 ? 1 : -1) * Math.min(1, (a - 4) / 18);
+  }
+  function onOrient(e){
+    var sc = window.screen;
+    var ang = (sc && sc.orientation && typeof sc.orientation.angle === 'number') ? sc.orientation.angle
+            : (typeof window.orientation === 'number' ? window.orientation : 0);
+    var t;
+    if (ang === 90) t = e.beta;              // 横向き（左に倒した持ち方）
+    else if (ang === -90 || ang === 270) t = -e.beta;
+    else t = e.gamma;                        // 縦向き
+    if (typeof t !== 'number' || !isFinite(t)) return;
+    if (!tiltSeen) { tiltZero = t; tiltSeen = true; }
+    tiltNow = t;
+  }
+  function syncTilt(){ if (tiltBtn) { tiltBtn.textContent = tiltOn ? '傾き 入' : '傾き 切'; tiltBtn.classList.toggle('on', tiltOn); } }
+  function setTilt(on){
+    tiltOn = on; tiltSeen = false;
+    if (on) window.addEventListener('deviceorientation', onOrient);
+    else window.removeEventListener('deviceorientation', onOrient);
+    syncTilt();
+  }
+  if (tiltBtn) {
+    // 指で操作する端末で、傾きが取れるときだけボタンを出す
+    var coarse = false;
+    try { coarse = window.matchMedia('(pointer: coarse)').matches; } catch(e){}
+    if (coarse && 'DeviceOrientationEvent' in window) tiltBtn.hidden = false;
+    tiltBtn.addEventListener('click', function(){
+      tiltBtn.blur();
+      if (tiltOn) { setTilt(false); return; }
+      // iPhone は、押したその場で使ってよいか聞く必要がある
+      var D = window.DeviceOrientationEvent;
+      if (D && typeof D.requestPermission === 'function') {
+        D.requestPermission().then(function(r){ if (r === 'granted') setTilt(true); else alertTilt(); }).catch(alertTilt);
+      } else setTilt(true);
+    });
+  }
+  function alertTilt(){ if (tiltBtn) tiltBtn.textContent = '傾き 許可なし'; }
 
   function bank(){
     if (pending > 0) score += Math.round(pending * mult);
@@ -1895,6 +2061,7 @@
     time += dt;
 
     car.steerV = steerV; car.holdT = holdT; car.idx = idx; car.hitT = hitT; car.stuckT = stuckT;
+    applyTune(car);
     drive(car, steerDir(), dt);
     steerV = car.steerV; holdT = car.holdT; idx = car.idx; hitT = car.hitT; stuckT = car.stuckT;
     if (story && riv) stepRival(dt);
@@ -1978,7 +2145,8 @@
     // ハンドルは一気にではなく、押している長さに応じて切れていく
     var rate = (d === 0 || d * c.steerV < 0) ? STEERDN : STEERUP;
     c.steerV += (d - c.steerV) * Math.min(1, rate * dt);
-    c.ang += c.steerV * TURN * Math.max(0.32, Math.min(1, sp/70)) * dt;  // 止まっていても向きは変えられる
+    // c.turnK：車の仕上げで曲がりやすくする倍率（標準の車は持たない＝1）
+    c.ang += c.steerV * (TURN * (c.turnK || 1)) * Math.max(0.32, Math.min(1, sp/70)) * dt;  // 止まっていても向きは変えられる
 
     var fx = Math.sin(c.ang), fy = -Math.cos(c.ang);
     var rx = Math.cos(c.ang), ry = Math.sin(c.ang);
@@ -2031,7 +2199,8 @@
     var fast = 1 - SPEEDSLIP * Math.min(1, sp / MAXS);
     // 荷重：頂上では抜けて滑りやすく、谷では沈んで 食いつく
     var load = Math.max(0.60, Math.min(1.40, 1 - CREST * sN.dg));
-    var grip = GRIP * fast * (1 - HOLD*c.holdT) * (onRoad ? 1 : 0.5) * load;
+    // c.gripK：車の仕上げの踏ん張り倍率、WGRIP：天気（雨で下がる。晴れは1）
+    var grip = GRIP * (c.gripK || 1) * WGRIP * fast * (1 - HOLD*c.holdT) * (onRoad ? 1 : 0.5) * load;
     var la = Math.abs(lat);
     var curve = la <= PEAK ? la : Math.max(PEAK * TAIL, PEAK * PEAK / la);
     var dLat = Math.min(la, grip * curve * dt);
@@ -2227,8 +2396,9 @@
 
   function draw(){
     var cv0 = curView();
-    if (cv0 === 'chase' || cv0 === 'tv') {
+    if (cv0 === 'chase' || cv0 === 'tv' || cv0 === 'orbit') {
       drawExt(cv0);
+      drawWeather(false);
       drawGhostGap();
       drawRivalGap();
       drawSpeed();
@@ -2237,6 +2407,7 @@
     }
     if (cv0 === 'cab') {
       drawCab();
+      drawWeather(false);
       drawGhostGap();
       drawRivalGap();
       drawSpeed();
@@ -2289,6 +2460,7 @@
     drawGhost();
     drawRival();
     drawCar();
+    drawWeather(true);
     drawGhostGap();
     drawRivalGap();
     drawSpeed();
@@ -2471,9 +2643,11 @@
   var rp = null;                 // 再生中の情報
   var lastRun = null;            // 直前の自分の走り
   var rivRec = [];               // 物語の相手の走り（自分の記録と同じ形）
-  var RVIEWS = ['tv', 'chase', 'cab', 'top'];
-  var RVNAME = { tv:'中継', chase:'追いかけ', cab:'運転席', top:'上から' };
-  var rview = 'tv';
+  var RVIEWS = ['auto', 'tv', 'chase', 'orbit', 'cab', 'top'];
+  var RVNAME = { auto:'おまかせ', tv:'中継', chase:'追いかけ', orbit:'回り込み', cab:'運転席', top:'上から' };
+  var rview = 'auto';
+  // おまかせ：中継→追いかけ→中継→回り込み を、場面ごとに切り替える
+  var AUTO_SEQ = [['tv', 4.5], ['chase', 3.5], ['tv', 4.5], ['orbit', 3.2]];
   var chase = { x:0, y:0, z:0, yaw:0 };
   var rpui = document.getElementById('rpui');
   var rpView = document.getElementById('rpView');
@@ -2483,8 +2657,11 @@
   // 自分の車の色（ゴーストのリプレイ中はゴーストの色）
   function myCol(){ return st === 'replay' && rp && rp.col ? rp.col : COL.body; }
   // いま描くべき視点（リプレイ中はリプレイの視点）
-  function curView(){ return st === 'replay' ? rview : view; }
-  function is3D(){ var v = curView(); return v === 'cab' || v === 'chase' || v === 'tv'; }
+  function curView(){
+    if (st !== 'replay') return view;
+    return rview === 'auto' ? AUTO_SEQ[rp.autoI][0] : rview;
+  }
+  function is3D(){ return curView() !== 'top'; }
 
   // いま一緒に走らせるゴースト（無ければ null）
   function ghostNow(){
@@ -2525,19 +2702,20 @@
       src = { rec: g.arr, riv: null, gh: null, col: g.col.body };   // ゴーストの走りはゴーストの色で
     }
     rp = { kind: kind, arr: src.rec, riv: src.riv, gh: src.gh, col: src.col || null, t: 0, speed: 1,
+           autoI: 0, autoT: 0, orbitA: 0,
            end: (src.rec.length / 4 - 1) * GH_DT,
            prev: { st: st, title: veilTitle.textContent, body: veilBody.innerHTML, btn: goBtn.textContent } };
     st = 'replay';
     if (window.SCOREBOARD) SCOREBOARD.hide();
     veil.classList.add('off'); countEl.classList.add('off');
-    marks.length = 0; smoke.length = 0; lastWheels = null;
+    marks.length = 0; smoke.length = 0; lastWheels = null; rivWheels = null;
     score = 0; pending = 0; mult = 1;
     if (!story) riv = null;
     applyReplay(0, 0);
     camX = car.x - W/2; camY = car.y - H/2;
     cabYaw = car.ang; cabPitch = pitchAt(idx);
     resetChase();
-    if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx % 3);
     rpui.hidden = false;
     syncRp();
     layout();
@@ -2556,7 +2734,7 @@
     layout();
   }
   function syncRp(){
-    rpView.textContent = '視点 ' + RVNAME[rview];
+    rpView.textContent = '視点 ' + RVNAME[rview] + (rview === 'auto' && rp ? '（' + RVNAME[AUTO_SEQ[rp.autoI][0]] + '）' : '');
     rpSlow.textContent = rp && rp.speed < 1 ? 'スロー中' : 'スロー';
     rpSlow.classList.toggle('on', !!(rp && rp.speed < 1));
   }
@@ -2620,6 +2798,20 @@
       var rfx = Math.sin(riv.ang), rfy = -Math.cos(riv.ang);
       riv.fwd = riv.vx*rfx + riv.vy*rfy; riv.lat = riv.vx*Math.cos(riv.ang) + riv.vy*Math.sin(riv.ang);
       riv.steerV = 0; riv.hitT = 0;
+      // 相手の轍も残す
+      if (dt > 0) {
+        var rrx = Math.cos(riv.ang), rry = Math.sin(riv.ang);
+        if (Math.abs(riv.lat) > 34) {
+          var rwl = { x: riv.x - rrx*13.8 - rfx*18, y: riv.y - rry*13.8 - rfy*18 };
+          var rwr = { x: riv.x + rrx*13.8 - rfx*18, y: riv.y + rry*13.8 - rfy*18 };
+          if (rivWheels) {
+            marks.push({ x1:rivWheels.l.x, y1:rivWheels.l.y, x2:rwl.x, y2:rwl.y, h:TRACK[riv.idx].h });
+            marks.push({ x1:rivWheels.r.x, y1:rivWheels.r.y, x2:rwr.x, y2:rwr.y, h:TRACK[riv.idx].h });
+            while (marks.length > 1400) marks.shift();
+          }
+          rivWheels = { l:rwl, r:rwr };
+        } else rivWheels = null;
+      }
     }
   }
 
@@ -2628,6 +2820,14 @@
     rp.t += d;
     if (rp.t >= rp.end) { endReplay(); return; }
     applyReplay(rp.t, d);
+    // おまかせのカメラ切り替え（スロー中は長めに見せる）
+    rp.autoT += dt;
+    if (rview === 'auto' && rp.autoT >= AUTO_SEQ[rp.autoI][1]) {
+      rp.autoT = 0; rp.autoI = (rp.autoI + 1) % AUTO_SEQ.length;
+      if (AUTO_SEQ[rp.autoI][0] === 'chase') resetChase();
+      syncRp(); layout();
+    }
+    rp.orbitA += d * 0.55;
     // 上からの視点のカメラ（走っているときと同じ追い方）
     var tx = car.x + car.vx*0.42 - W/2, ty = car.y + car.vy*0.42 - H/2;
     var k = Math.min(1, 6.5*d);
@@ -2681,6 +2881,12 @@
       var fov = Math.max(0.22, Math.min(1.1, 2 * Math.atan(75 / Math.max(1, hd))));   // 遠いほど寄せる
       F = (W/2) / Math.tan(fov/2);
       cam = makeCam(best.x, best.y, best.z, Math.atan2(dx, -dy), Math.atan2(tz - best.z, hd));
+    } else if (v === 'orbit') {
+      // 回り込み：車のまわりを低い位置からゆっくり回る
+      var oa = car.ang + 2.2 + rp.orbitA;
+      var ox = car.x + Math.sin(oa)*64, oy = car.y - Math.cos(oa)*64, oz = base + 11;
+      F = (W/2) / Math.tan(0.95/2);
+      cam = makeCam(ox, oy, oz, Math.atan2(car.x - ox, -(car.y - oy)), Math.atan2(base + 6 - oz, 64));
     } else {
       var lx = car.x + Math.sin(chase.yaw)*24, ly = car.y - Math.cos(chase.yaw)*24;
       var ddx = lx - chase.x, ddy = ly - chase.y;
@@ -2719,11 +2925,18 @@
   function pitchAt(i){ var t = TRACK[i] || TRACK[0]; return -0.10 - Math.atan(t.g); }
 
   // 色を夜の暗さへ溶かす（t=0 そのまま、1 で真っ暗）
+  // 霧の色と、真っ暗（霧なら真っ白）になる遠さ。天気で変わる
+  var FOG = { r:14, g:16, b:21, dist:1300 };
+  function setFog(){
+    if (weather === 'fog') { FOG.r = 52; FOG.g = 56; FOG.b = 64; FOG.dist = 360; }
+    else { FOG.r = 14; FOG.g = 16; FOG.b = 21; FOG.dist = 1300; }
+  }
   function fogC(rgb, t){
     var k = 1 - Math.max(0, Math.min(1, t));
-    return 'rgb(' + Math.round(14 + (rgb[0]-14)*k) + ',' + Math.round(16 + (rgb[1]-16)*k) + ',' + Math.round(21 + (rgb[2]-21)*k) + ')';
+    return 'rgb(' + Math.round(FOG.r + (rgb[0]-FOG.r)*k) + ',' + Math.round(FOG.g + (rgb[1]-FOG.g)*k) + ',' + Math.round(FOG.b + (rgb[2]-FOG.b)*k) + ')';
   }
   function rgbOf(hex){ var n = parseInt(hex.slice(1), 16); return [(n>>16)&255, (n>>8)&255, n&255]; }
+  var RGB_WET = [52,58,70];      // 雨で濡れた路面（少し明るく、青みがかる）
   var RGB_ROAD = [44,46,54], RGB_EDGE = [200,196,184], RGB_WALL = [58,46,38], RGB_RAIL = [88,86,84], RGB_CEN = [110,106,96];
 
   // カメラ cam から見た座標へ
@@ -2887,7 +3100,7 @@
     var ti = Math.max(0, Math.min(TRACK.length-1, c.idx || 0));
     var base = TRACK[ti].h, d = Math.hypot(c.x - cam.x, c.y - cam.y);
     if (d > 2400) return;
-    var fogT = Math.min(0.85, d / 1500), rgb = rgbOf(hex);
+    var fogT = Math.min(0.85, d / (FOG.dist * 1.15)), rgb = rgbOf(hex);
     var fx = Math.sin(c.ang), fy = -Math.cos(c.ang), rx = Math.cos(c.ang), ry = Math.sin(c.ang);
     // 上から見た絵の座標(x 右, y 後ろ) → 世界
     function Wd(p){ return [c.x + rx*p[0] - fx*p[1], c.y + ry*p[0] - fy*p[1], base + p[2]]; }
@@ -2943,16 +3156,70 @@
     ctx.globalAlpha = 1;
   }
 
+  // 前照灯の光：車の向きの前方へ、扇形に広がる帯を路面の高さに合わせて重ね塗りする
+  function lightCone(cam, vp, c){
+    var fx = Math.sin(c.ang), fy = -Math.cos(c.ang), rx = Math.cos(c.ang), ry = Math.sin(c.ang);
+    var from = Math.max(0, c.idx || 0), prev = null, s, k;
+    ctx.globalCompositeOperation = 'lighter';
+    for (s = 10; s <= 370; s += 30){
+      var px = c.x + fx*s, py = c.y + fy*s;
+      // その地点にいちばん近いコースの点の高さ（車の位置から先を探す）
+      var bi = from, bd = 1e18;
+      for (k = from; k < Math.min(TRACK.length, from + 75); k++){
+        var dx = TRACK[k].x - px, dy = TRACK[k].y - py, dd = dx*dx + dy*dy;
+        if (dd < bd) { bd = dd; bi = k; }
+      }
+      var z = TRACK[bi].h + 0.6, w = 10 + s * 0.34;
+      var cur = [px - rx*w, py - ry*w, px + rx*w, py + ry*w, z];
+      if (prev) {
+        var a = 0.13 * (1 - s / 400);
+        polyC(vp, [toC(cam, prev[0], prev[1], prev[4]), toC(cam, prev[2], prev[3], prev[4]),
+                   toC(cam, cur[2], cur[3], cur[4]), toC(cam, cur[0], cur[1], cur[4])],
+              'rgba(255,224,170,' + a.toFixed(3) + ')');
+      }
+      prev = cur;
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // 雨の筋と、上からの視点の霧
+  var rainT = 0;
+  function drawWeather(top){
+    if (weather === 'rain') {
+      rainT += 1/60;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(170,190,225,0.32)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var i = 0; i < 80; i++){
+        var sx = ((i * 97.3 + rainT * 40) % (W + 40)) - 20;
+        var sy = ((i * 53.7 + rainT * 520 * (0.8 + (i % 5) * 0.08)) % (H + 30)) - 15;
+        ctx.moveTo(sx, sy); ctx.lineTo(sx - 3, sy + 13);
+      }
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(20,26,40,0.18)'; ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    } else if (weather === 'fog' && top) {
+      var cx = car.x - camX, cy = car.y - camY;
+      var g = ctx.createRadialGradient(cx, cy, 38, cx, cy, 140);
+      g.addColorStop(0, 'rgba(52,56,64,0)'); g.addColorStop(1, 'rgba(52,56,64,0.97)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+  }
+
   // 景色を1枚描く（本画面とルームミラーで使い回す）
   function scene(cam, vp){
     var i, k;
     // 空と遠くの山（向きに合わせて流れる）
+    setFog();
     var hz = vp.hor + Math.tan(cam.pitch) * vp.F;
     var g = ctx.createLinearGradient(0, vp.y, 0, Math.max(vp.y + 1, hz));
-    g.addColorStop(0, '#05060A'); g.addColorStop(1, '#171A26');
+    if (weather === 'fog') { g.addColorStop(0, '#2A2D34'); g.addColorStop(1, '#343840'); }
+    else if (weather === 'rain') { g.addColorStop(0, '#07080D'); g.addColorStop(1, '#1A1E2A'); }
+    else { g.addColorStop(0, '#05060A'); g.addColorStop(1, '#171A26'); }
     ctx.fillStyle = g; ctx.fillRect(vp.x, vp.y, vp.w, Math.max(0, hz - vp.y));
-    ctx.fillStyle = COL.ground; ctx.fillRect(vp.x, hz, vp.w, Math.max(0, vp.y + vp.h - hz));
-    ctx.fillStyle = '#0B0D13';
+    ctx.fillStyle = weather === 'fog' ? 'rgb(' + FOG.r + ',' + FOG.g + ',' + FOG.b + ')' : COL.ground;
+    ctx.fillRect(vp.x, hz, vp.w, Math.max(0, vp.y + vp.h - hz));
+    ctx.fillStyle = weather === 'fog' ? 'rgba(0,0,0,0)' : '#0B0D13';
     ctx.beginPath(); ctx.moveTo(vp.x, hz);
     for (k = 0; k <= vp.w; k += 4){
       var an = cam.yaw + (vp.flip ? -1 : 1) * (vp.x + k - vp.cx) / vp.F;
@@ -2986,7 +3253,7 @@
       var lim0 = Math.max(0, C[i].Z) * vp.wide + 160, lim1 = Math.max(0, C[i+1].Z) * vp.wide + 160;
       if ((C[i].X > lim0 && C[i+1].X > lim1) || (C[i].X < -lim0 && C[i+1].X < -lim1)) continue;
       var dep = (C[i].Z + C[i+1].Z) / 2;
-      if (dep > 1400) continue;       // ここより遠いと霧で地面と同じ色になり、見えない
+      if (dep > FOG.dist * 1.08) continue;       // ここより遠いと霧で地面と同じ色になり、見えない
       segs.push([dep, i]);
     }
     segs.sort(function(a, b){ return b[0] - a[0]; });
@@ -2995,7 +3262,7 @@
     // 区間ごとに奥から塗ると、ヘアピンで隣り合う道の路肩が手前の路面に被さってしまう。
     function each(fn){
       for (var q = 0; q < segs.length; q++){
-        j = segs[q][1]; ft = Math.round(Math.max(0, segs[q][0]) / 1300 * 24) / 24; ti2 = i0 + j;   // 色の数を減らしてまとめ塗りを効かせる
+        j = segs[q][1]; ft = Math.round(Math.max(0, segs[q][0]) / FOG.dist * 24) / 24; ti2 = i0 + j;   // 色の数を減らしてまとめ塗りを効かせる
         fn();
       }
     }
@@ -3015,7 +3282,7 @@
     bFlush(B, false); B = batch(vp);
     var B2 = batch(vp);
     each(function(){   // 路面（上から見たときの坂の色づけと同じく、下りは水色・上りは橙を薄く混ぜる）
-      var gg = TRACK[ti2].g, rr = RGB_ROAD;
+      var gg = TRACK[ti2].g, rr = weather === 'rain' ? RGB_WET : RGB_ROAD;
       var tint = Math.round(Math.min(0.13, Math.abs(gg) * 0.75) * 50) / 50;
       var rc = gg >= 0 ? [rr[0] + (95-rr[0])*tint, rr[1] + (211-rr[1])*tint, rr[2] + (224-rr[2])*tint]
                        : [rr[0] + (240-rr[0])*tint, rr[1] + (135-rr[1])*tint, rr[2] + (58-rr[2])*tint];
@@ -3053,6 +3320,12 @@
                 toC(cam, mk.x2 + px, mk.y2 + py, hh), toC(cam, mk.x1 + px, mk.y1 + py, hh)], 'rgba(0,0,0,0.42)');
     }
     bFlush(BM, false);
+
+    // 前照灯が路面を照らす（自分の車と、物語の相手）
+    if (vp.marks) {                       // ルームミラーには描かない（後ろ向きなので見えず、重いだけ）
+      lightCone(cam, vp, car);
+      if (story && riv) lightCone(cam, vp, riv);
+    }
 
     // 車（遠いものから）
     var cars = [];
@@ -3454,6 +3727,8 @@ function shade(hex, k){
     loadBest();
     loadStory();
     loadMyCol();
+    loadOpts();
+    syncWx();
     try { var v0 = localStorage.getItem('wadachi.view'); if (v0 === 'cab' || v0 === 'chase') view = v0; } catch(e){}
     syncView();
     syncGh();

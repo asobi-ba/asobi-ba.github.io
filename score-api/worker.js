@@ -30,6 +30,15 @@ const GAMES = {
   'wadachi-1': { order: 'asc',  max: 3600,     unit: '秒' },
   'wadachi-2': { order: 'asc',  max: 3600,     unit: '秒' },
   'wadachi-3': { order: 'asc',  max: 3600,     unit: '秒' },
+  'wadachi-4': { order: 'asc',  max: 3600,     unit: '秒' },   // 上り（杉ノ沢・鷹ノ巣・蛇骨）
+  'wadachi-5': { order: 'asc',  max: 3600,     unit: '秒' },
+  'wadachi-6': { order: 'asc',  max: 3600,     unit: '秒' },
+  'wadachi-d1': { order: 'desc', max: 99999999, unit: '点' },  // ドリフト点（1〜3 下り、4〜6 上り）
+  'wadachi-d2': { order: 'desc', max: 99999999, unit: '点' },
+  'wadachi-d3': { order: 'desc', max: 99999999, unit: '点' },
+  'wadachi-d4': { order: 'desc', max: 99999999, unit: '点' },
+  'wadachi-d5': { order: 'desc', max: 99999999, unit: '点' },
+  'wadachi-d6': { order: 'desc', max: 99999999, unit: '点' },
   'sokki-0':   { order: 'desc', max: 3000,     unit: '文字/分' },
   'sokki-1':   { order: 'desc', max: 3000,     unit: '文字/分' },
   'sokki-2':   { order: 'desc', max: 3000,     unit: '文字/分' },
