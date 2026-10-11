@@ -2635,6 +2635,12 @@
     scene(makeCam(ex, ey, ez, cabYaw, cabPitch), { x:0, y:0, w:W, h:H, cx:W/2, hor:H*0.42, F:F, flip:false, wide:(W/2)/F, marks:true });
     ctx.restore();
 
+    // 車内（ボンネット・ダッシュボード・ピラー・ハンドル）は車体に付いているので、
+    // 視線が車体の向きからずれているぶん横へずらす。ドリフト中は鼻先が横を向いて見える。
+    var dYaw = Math.max(-0.95, Math.min(0.95, wrapA(car.ang - cabYaw)));
+    var sx = Math.tan(dYaw) * F;
+    ctx.save();
+    ctx.translate(sx, 0);
     // ボンネット（自分の車の色）
     var hg = ctx.createLinearGradient(0, H*0.74, 0, H);
     hg.addColorStop(0, shade(COL.body, 0.05)); hg.addColorStop(1, shade(COL.body, -0.35));
@@ -2642,16 +2648,17 @@
     ctx.beginPath();
     ctx.moveTo(-10, H); ctx.lineTo(W*0.20, H*0.775); ctx.quadraticCurveTo(W/2, H*0.745, W*0.80, H*0.775);
     ctx.lineTo(W+10, H); ctx.closePath(); ctx.fill();
-    // ダッシュボード
+    // ダッシュボード（左右に長く。ずらしても端が見えないように）
     ctx.fillStyle = '#0A0B0F';
     ctx.beginPath();
-    ctx.moveTo(0, H*0.86); ctx.quadraticCurveTo(W/2, H*0.83, W, H*0.86); ctx.lineTo(W, H); ctx.lineTo(0, H);
+    ctx.moveTo(-W*1.5, H*0.86); ctx.lineTo(0, H*0.86); ctx.quadraticCurveTo(W/2, H*0.83, W, H*0.86);
+    ctx.lineTo(W*2.5, H*0.86); ctx.lineTo(W*2.5, H); ctx.lineTo(-W*1.5, H);
     ctx.closePath(); ctx.fill();
-    // ピラー（窓の枠）
+    // ピラー（窓の枠。細い柱だけ。外側は横の窓なので景色が見える）と屋根のふち
     ctx.fillStyle = '#07080B';
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(14, 0); ctx.lineTo(4, H*0.86); ctx.lineTo(0, H*0.86); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W-14, 0); ctx.lineTo(W-4, H*0.86); ctx.lineTo(W, H*0.86); ctx.closePath(); ctx.fill();
-    ctx.fillRect(0, 0, W, 4);
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(16, 0); ctx.lineTo(6, H*0.86); ctx.lineTo(-4, H*0.86); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W+6, 0); ctx.lineTo(W-16, 0); ctx.lineTo(W-6, H*0.86); ctx.lineTo(W+4, H*0.86); ctx.closePath(); ctx.fill();
+    ctx.fillRect(-W*1.5, 0, W*4, 4);
     // ハンドル（切っているぶん回る）
     ctx.save();
     ctx.translate(W*0.5, H*0.99);
@@ -2665,7 +2672,7 @@
     ctx.fillStyle = '#F0873A';
     ctx.fillRect(-2, -56, 4, 8);         // 真上の印
     ctx.restore();
-
+    ctx.restore();
     // ルームミラー（後ろ。ライバルが迫ってくるのが見える）
     var mw = 92, mh = 30, mx = W/2 - mw/2, my = 24;
     ctx.save();
