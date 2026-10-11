@@ -2412,7 +2412,7 @@
   // 世界は x（右）・y（下）・z（上）。前は (sin a, -cos a)、右は (cos a, sin a)。
   var view = 'top';
   var cabYaw = 0, cabPitch = 0;
-  var EYE = 14;          // 目の高さ（車の全長62≒4.4m なので、約1.0m。スポーツカーの低い座面）
+  var EYE = 15.5;        // 目の高さ（車の全長62≒4.4m なので、約1.1m。スポーツカーの低い座面）
   var CAB_FOV = 1.25;    // 横の見える角度（ラジアン）
   var CAB_NEAR = 3;
   // 視線：ドリフト中は鼻先と進む向きの中間を見る（出口を見る感じ）
@@ -2424,7 +2424,7 @@
       var tp = TRACK[Math.min(TRACK.length-1, idx + Math.round((70 + sp*0.30) / STEP))];
       var aAng = vAng + wrapA(Math.atan2(tp.x - car.x, -(tp.y - car.y)) - vAng);
       var look = vAng + wrapA(aAng - vAng) * 0.6;
-      tgt = car.ang + Math.max(-1.2, Math.min(1.2, wrapA(look - car.ang)));
+      tgt = car.ang + Math.max(-1.75, Math.min(1.75, wrapA(look - car.ang)));   // 真横（90度）を少し越えるまで向ける
     }
     cabYaw += wrapA(tgt - cabYaw) * Math.min(1, 9 * dt);
     cabPitch += (pitchAt(idx) - cabPitch) * Math.min(1, 6 * dt);
@@ -2631,88 +2631,103 @@
     for (k = 0; k < cars.length; k++) car3(cam, vp, cars[k].c, cars[k].col, cars[k].a);
   }
 
+// 運転席の目の位置（車の中心から 前 f・右 r。右ハンドルなので右の座席）
+  var EYE_F = -4, EYE_R = 7;
   function drawCab(){
     var fx = Math.sin(car.ang), fy = -Math.cos(car.ang);
     var rx = Math.cos(car.ang), ry = Math.sin(car.ang);
-    var ez = (TRACK[idx] ? TRACK[idx].h : 0) + EYE;
-    // 目の位置：車の中心から少し前、右ハンドルなので少し右
-    var ex = car.x + fx*2 + rx*5, ey = car.y + fy*2 + ry*5;
+    var base = TRACK[idx] ? TRACK[idx].h : 0;
+    var ez = base + EYE;
+    var ex = car.x + fx*EYE_F + rx*EYE_R, ey = car.y + fy*EYE_F + ry*EYE_R;
     var F = (W/2) / Math.tan(CAB_FOV/2);
+    var cam = makeCam(ex, ey, ez, cabYaw, cabPitch);
+    var vp = { x:0, y:0, w:W, h:H, cx:W/2, hor:H*0.42, F:F, flip:false, wide:(W/2)/F, marks:true };
     ctx.save();
-    scene(makeCam(ex, ey, ez, cabYaw, cabPitch), { x:0, y:0, w:W, h:H, cx:W/2, hor:H*0.42, F:F, flip:false, wide:(W/2)/F, marks:true });
+    scene(cam, vp);
     ctx.restore();
+    cockpit(cam, vp, base);
 
-    // 車内（ボンネット・ダッシュボード・ピラー・ハンドル）は車体に付いているので、
-    // 視線が車体の向きからずれているぶん横へずらす。ドリフト中は鼻先が横を向いて見える。
-    // そのままの量だと大きく滑ったときに柱が画面のまんなかへ来て道が見えないので、半分に抑える
-    var dYaw = Math.max(-0.8, Math.min(0.8, wrapA(car.ang - cabYaw)));
-    var sx = Math.tan(dYaw) * F * 0.5;
-    ctx.save();
-    ctx.translate(sx, 0);
-    // ボンネット（自分の車の色）。スポーツカーらしく低く幅広に。左右の泥よけが少し盛り上がる
-    var hg = ctx.createLinearGradient(0, H*0.76, 0, H);
-    hg.addColorStop(0, shade(COL.body, 0.08)); hg.addColorStop(1, shade(COL.body, -0.40));
-    ctx.fillStyle = hg;
-    ctx.beginPath();
-    ctx.moveTo(-W*0.45, H);
-    ctx.lineTo(-W*0.40, H*0.800);
-    ctx.quadraticCurveTo(-W*0.02, H*0.770, W*0.16, H*0.786);     // 左の泥よけ
-    ctx.quadraticCurveTo(W*0.50, H*0.800, W*0.84, H*0.786);      // まんなかは少し低い
-    ctx.quadraticCurveTo(W*1.02, H*0.770, W*1.40, H*0.800);      // 右の泥よけ
-    ctx.lineTo(W*1.45, H); ctx.closePath(); ctx.fill();
-    // 泥よけの峰に うっすら光
-    ctx.strokeStyle = shade(COL.body, 0.30); ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-W*0.30, H*0.792); ctx.quadraticCurveTo(-W*0.02, H*0.770, W*0.16, H*0.786);
-    ctx.moveTo(W*0.84, H*0.786); ctx.quadraticCurveTo(W*1.02, H*0.770, W*1.30, H*0.792);
-    ctx.stroke();
-    // ダッシュボード（左右に長く。ずらしても端が見えないように）
-    ctx.fillStyle = '#0A0B0F';
-    ctx.beginPath();
-    ctx.moveTo(-W*1.5, H*0.875); ctx.lineTo(0, H*0.875); ctx.quadraticCurveTo(W/2, H*0.85, W, H*0.875);
-    ctx.lineTo(W*2.5, H*0.875); ctx.lineTo(W*2.5, H); ctx.lineTo(-W*1.5, H);
-    ctx.closePath(); ctx.fill();
-    // 屋根のふち（低い屋根。窓の上端が弧を描く）
-    // 屋根と柱は、ずらす量をさらに控えめにする（柱が道の上に来ると前が見えないため）
-    ctx.save();
-    ctx.translate(-sx * 0.65, 0);
-    ctx.fillStyle = '#07080B';
-    ctx.beginPath();
-    ctx.moveTo(-W*1.5, 0); ctx.lineTo(W*2.5, 0); ctx.lineTo(W*2.5, H*0.20);
-    ctx.lineTo(W*1.02, H*0.20);
-    ctx.quadraticCurveTo(W*0.5, H*0.115, -W*0.02, H*0.20);
-    ctx.lineTo(-W*1.5, H*0.20); ctx.closePath(); ctx.fill();
-    // ピラー：強く寝かせた柱。下は外側、上は内側へ（屋根のふちにつながる）。
-    // 右ハンドルなので右の柱は近くて太く、左は遠くて細い
-    ctx.beginPath(); ctx.moveTo(-W*0.10, H*0.875); ctx.lineTo(-W*0.03, H*0.875); ctx.lineTo(W*0.10, H*0.19); ctx.lineTo(W*0.05, H*0.19); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(W*1.14, H*0.875); ctx.lineTo(W*1.02, H*0.875); ctx.lineTo(W*0.88, H*0.19); ctx.lineTo(W*0.96, H*0.19); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    // ハンドル（切っているぶん回る）
-    ctx.save();
-    ctx.translate(W*0.5, H*0.99);
-    ctx.rotate(steerV * 1.9);
-    ctx.strokeStyle = '#1C1E25'; ctx.lineWidth = 9;
-    ctx.beginPath(); ctx.arc(0, 0, 52, 0, Math.PI*2); ctx.stroke();
-    ctx.strokeStyle = '#2A2D36'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(0, 0, 52, 0, Math.PI*2); ctx.stroke();
-    ctx.strokeStyle = '#1C1E25'; ctx.lineWidth = 7;
-    ctx.beginPath(); ctx.moveTo(-50, 0); ctx.lineTo(50, 0); ctx.stroke();
-    ctx.fillStyle = '#F0873A';
-    ctx.fillRect(-2, -56, 4, 8);         // 真上の印
-    ctx.restore();
-    ctx.restore();
     // ルームミラー（後ろ。ライバルが迫ってくるのが見える）
     var mw = 92, mh = 30, mx = W/2 - mw/2, my = 24;
     ctx.save();
     ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip();
     var Fm = (mw/2) / Math.tan(0.55);
-    scene(makeCam(car.x, car.y, ez + 2, cabYaw + Math.PI, -0.05), { x:mx, y:my, w:mw, h:mh, cx:W/2, hor:my + mh*0.55, F:Fm, flip:true, wide:(mw/2)/Fm, marks:false });
+    scene(makeCam(car.x, car.y, ez + 2, car.ang + Math.PI, -0.05), { x:mx, y:my, w:mw, h:mh, cx:W/2, hor:my + mh*0.55, F:Fm, flip:true, wide:(mw/2)/Fm, marks:false });
     ctx.restore();
     ctx.strokeStyle = '#1A1C22'; ctx.lineWidth = 3;
     ctx.strokeRect(mx - 1, my - 1, mw + 2, mh + 2);
 
     // 壁やライバルに当たった瞬間は、画面を薄く赤く
     if (hitT > 0){ ctx.fillStyle = 'rgba(224,69,58,' + Math.min(0.25, hitT*0.5).toFixed(2) + ')'; ctx.fillRect(0, 0, W, H); }
+  }
+
+  // 車内を3次元で組む（車体に付いているので、視線がどちらを向いても正しい位置に見える。
+  // 真横を向けば横の窓・ドア・中の柱が見える）。座標は車の中心から 前 f・右 r・路面からの高さ z。
+  // 車体の大きさ：全長62（±31）・全幅31（±15.5）。
+  function cockpit(cam, vp, base){
+    var fx = Math.sin(car.ang), fy = -Math.cos(car.ang), rx = Math.cos(car.ang), ry = Math.sin(car.ang);
+    var g = TRACK[idx] ? TRACK[idx].g : 0;
+    function P(f, r, z){
+      // 坂では車体も前後に傾く（下りは前が下がる）
+      return toC(cam, car.x + fx*f + rx*r, car.y + fy*f + ry*r, base + z - f*g);
+    }
+    var body = COL.body;
+    var parts = [];
+    function add(pts, fill){
+      var zs = 0;
+      for (var i = 0; i < pts.length; i++) zs += pts[i].Z;
+      parts.push({ pts: pts, fill: fill, z: zs / pts.length });
+    }
+    var WF = 12, WT = 3;          // 窓の下端（前）と上端（屋根のふち）の前後位置
+    // ボンネット：左右の泥よけが少し高く、まんなかが低い
+    add([P(WF,-15.5,10.9), P(WF,-9,10.9), P(30.5,-9,8.6), P(30.5,-15,8.8)], shade(body, -0.02));
+    add([P(WF,-9,10.9), P(WF,9,10.9), P(30.5,9,8.3), P(30.5,-9,8.3)], shade(body, -0.16));
+    add([P(WF,9,10.9), P(WF,15.5,10.9), P(30.5,15,8.8), P(30.5,9,8.6)], shade(body, -0.02));
+    // ダッシュボード（上の面と、運転手に向いた面）
+    add([P(6,-15,9.6), P(6,15,9.6), P(WF,15,10.2), P(WF,-15,10.2)], '#16171D');
+    add([P(6,-15,0), P(6,15,0), P(6,15,9.6), P(6,-15,9.6)], '#0E0F13');
+    // 床（足もと）
+    add([P(6.2,-15.5,0.5), P(6.2,15.5,0.5), P(-26,15.5,0.5), P(-26,-15.5,0.5)], '#0A0B0E');
+    // ドア（窓の下）。上のふちを少し明るく
+    add([P(WF,-15.5,0), P(-26,-15.5,0), P(-26,-15.5,11), P(WF,-15.5,11)], '#14151A');
+    add([P(WF,15.5,0), P(-26,15.5,0), P(-26,15.5,11), P(WF,15.5,11)], '#14151A');
+    add([P(WF,-15.5,10.4), P(-26,-15.5,10.4), P(-26,-15,11.2), P(WF,-15,11.2)], '#2C2E36');
+    add([P(WF,15.5,10.4), P(-26,15.5,10.4), P(-26,15,11.2), P(WF,15,11.2)], '#2C2E36');
+    // 屋根（内張り）。低い屋根
+    add([P(WT,-12.5,19), P(WT,12.5,19), P(-26,12.5,19), P(-26,-12.5,19)], '#0E0F13');
+    // 屋根のふち（窓の上の帯）
+    add([P(WT+0.5,-12.5,18.2), P(WT+0.5,12.5,18.2), P(WT,12.5,19.2), P(WT,-12.5,19.2)], '#1B1C22');
+    // ピラー（前の柱。強く寝かせてある）と、中の柱（真横を向くと見える）
+    function pillar(s){
+      add([P(WF, s*15.4, 10.8), P(WF-2.6, s*15.2, 10.8), P(WT-1.8, s*12.4, 19), P(WT, s*12.6, 19)], '#101116');
+      add([P(-12, s*15.3, 11), P(-15.5, s*15.3, 11), P(-15.5, s*12.8, 19), P(-12, s*12.8, 19)], '#101116');
+    }
+    pillar(-1); pillar(1);
+    // 遠い順に塗る
+    parts.sort(function(a, b){ return b.z - a.z; });
+    for (var k = 0; k < parts.length; k++) polyC(vp, parts[k].pts, parts[k].fill, true);
+
+    // ハンドル（運転手の正面。切っているぶん回る。右へ切ると時計回り）
+    var cf = 3, cr = EYE_R, cz = 10.5, R = 2.7, tilt = 0.45;   // 半径 約19cm、目から 約50cm 前
+    var rot = -steerV * 1.9, i;
+    function WP(a, rr){   // 輪の上の点（a: 角度 0=右 π/2=上、rr: 中心からの距離）
+      var u = Math.cos(a + rot) * rr, v = Math.sin(a + rot) * rr;
+      return P(cf - v*Math.sin(tilt), cr + u, cz + v*Math.cos(tilt));
+    }
+    function line3(a1, b1, wd, col){
+      if (a1.Z < CAB_NEAR || b1.Z < CAB_NEAR) return;
+      ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, wd * vp.F / ((a1.Z + b1.Z) / 2));
+      ctx.beginPath();
+      ctx.moveTo(vp.cx + a1.X*vp.F/a1.Z, vp.hor - a1.Y*vp.F/a1.Z);
+      ctx.lineTo(vp.cx + b1.X*vp.F/b1.Z, vp.hor - b1.Y*vp.F/b1.Z);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'round';
+    for (i = 0; i < 28; i++) line3(WP(i/28*Math.PI*2, R), WP((i+1)/28*Math.PI*2, R), 0.45, '#24262E');
+    line3(WP(Math.PI, R), WP(0, 0), 0.35, '#24262E');        // 横のスポーク
+    line3(WP(0, 0), WP(0, R), 0.35, '#24262E');
+    line3(WP(Math.PI/2, R), WP(Math.PI/2, R - 0.5), 0.22, '#F0873A');   // 真上の印
+    ctx.lineCap = 'butt';
   }
 
   function drawGate(s, color){
