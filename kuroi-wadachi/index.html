@@ -2475,54 +2475,107 @@
              cp:Math.cos(pitch), sp:Math.sin(pitch), yaw:yaw, pitch:pitch };
   }
 
-  // 箱（車体・屋根）。見えている面だけ、明るさを変えて塗る
-  function boxC(cam, vp, x, y, z0, ang, fwd0, fwd1, half, z1, rgb, fogT){
-    var fx = Math.sin(ang), fy = -Math.cos(ang), rx = Math.cos(ang), ry = Math.sin(ang);
-    function P(f, r, z){ return toC(cam, x + fx*f + rx*r, y + fy*f + ry*r, z); }
-    var c = [P(fwd1,-half,z0), P(fwd1,half,z0), P(fwd0,half,z0), P(fwd0,-half,z0),
-             P(fwd1,-half,z1), P(fwd1,half,z1), P(fwd0,half,z1), P(fwd0,-half,z1)];
-    // 面：[頂点, 外向きの向き(世界), 明るさ, 面の中心(前後, 左右)]
-    var faces = [
-      [[0,1,5,4], [fx,fy],   0.80, fwd1, 0],     // 前
-      [[3,2,6,7], [-fx,-fy], 0.62, fwd0, 0],     // 後ろ
-      [[1,2,6,5], [rx,ry],   0.70, (fwd0+fwd1)/2, half],    // 右
-      [[0,3,7,4], [-rx,-ry], 0.70, (fwd0+fwd1)/2, -half]    // 左
-    ];
-    for (var k = 0; k < faces.length; k++){
-      var fc = faces[k], n = fc[1];
-      var mx = x + fx*fc[3] + rx*fc[4] - cam.x, my = y + fy*fc[3] + ry*fc[4] - cam.y;
-      if (mx*n[0] + my*n[1] >= 0) continue;      // 裏を向いている面は描かない
-      var sh = fc[2];
-      polyC(vp, [c[fc[0][0]], c[fc[0][1]], c[fc[0][2]], c[fc[0][3]]],
-            fogC([rgb[0]*sh, rgb[1]*sh, rgb[2]*sh], fogT));
+// ---------- 相手の車（ライバル・ゴースト）の立体 ----------
+  // 上から見た車（drawCarNew）と同じ形・同じ配色になるよう、同じ寸法から起こす。
+  // 座標は上から見た絵と同じ：x 右・y 後ろ（前が -y）・z 路面からの高さ。
+  var CAR3 = null;
+  function quadPts(out, x0, y0, cx, cy, x1, y1, n){
+    for (var i = 1; i <= n; i++){
+      var t = i / n, a = (1-t)*(1-t), b = 2*(1-t)*t, c = t*t;
+      out.push([a*x0 + b*cx + c*x1, a*y0 + b*cy + c*y1]);
     }
-    if (cam.z > z1) polyC(vp, [c[4], c[5], c[6], c[7]], fogC(rgb, fogT));   // 上の面
   }
-  // 車1台（車体＋屋根＋尾灯）
+  function buildCar3(){
+    // 車体の輪郭（bodyPath と同じ線を点にする）。左側を前→後ろに作り、右側はその鏡写し
+    var L = [[-6.2,-31.2], [-11.4,-28.6]], i;
+    quadPts(L, -11.4,-28.6, -14.4,-25.6, -14.2,-18.5, 3);   // 前の張り出し
+    quadPts(L, -14.2,-18.5, -11.8,-5.0,  -12.0,  8.0, 4);   // 胴を絞る
+    quadPts(L, -12.0,  8.0, -15.2,13.0,  -15.0, 21.0, 3);   // 後ろの張り出し
+    L.push([-11.2,30.0]);
+    var ring = L.slice();
+    for (i = L.length - 1; i >= 0; i--) ring.push([-L[i][0], L[i][1]]);
+    // 上の面の高さ：前が低く後ろが高い（長いボンネットが前へ下がる）
+    function zt(y){ return 7.6 + (y + 31) / 61 * 1.8; }
+    var F = [];   // [点の並び(x,y,z), 色の種類]
+    // 側面
+    for (i = 0; i < ring.length; i++){
+      var p = ring[i], q = ring[(i+1) % ring.length];
+      F.push([[[p[0],p[1],2.6], [q[0],q[1],2.6], [q[0],q[1],zt(q[1])], [p[0],p[1],zt(p[1])]], 'body']);
+    }
+    // 上の面（ボンネット・荷室のふた）
+    var top = [];
+    for (i = 0; i < ring.length; i++) top.push([ring[i][0], ring[i][1], zt(ring[i][1])]);
+    F.push([top, 'body']);
+    // 窓と屋根（前窓・屋根・後窓・横窓）
+    var zr = 15.2, zw = zt(-11), zb = zt(13.4);
+    F.push([[[-9.4,-11,zw], [9.4,-11,zw], [8.4,-2,zr], [-8.4,-2,zr]], 'glass']);          // 前窓
+    F.push([[[-8.4,-2,zr], [8.4,-2,zr], [8.4,6.6,zr], [-8.4,6.6,zr]], 'roof']);            // 屋根
+    F.push([[[8.6,13.4,zb], [-8.6,13.4,zb], [-8.4,6.6,zr], [8.4,6.6,zr]], 'glass']);       // 後窓
+    F.push([[[-10.4,-11,zw], [-8.4,-2,zr], [-8.4,6.6,zr], [-10.4,13.4,zb]], 'glass']);     // 左の窓
+    F.push([[[10.4,-11,zw], [10.4,13.4,zb], [8.4,6.6,zr], [8.4,-2,zr]], 'glass']);         // 右の窓
+    // 箱を足す（タイヤ・翼・立て板・支柱）
+    function box(x0, x1, y0, y1, z0, z1, kind){
+      var c = [[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]];
+      var fs = [[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7],[0,3,2,1]];
+      for (var k = 0; k < fs.length; k++) F.push([[c[fs[k][0]], c[fs[k][1]], c[fs[k][2]], c[fs[k][3]]], kind]);
+    }
+    box(-15.0,-8.8, -25.0,-12.0, 0, 7, 'tire'); box(8.8,15.0, -25.0,-12.0, 0, 7, 'tire');
+    box(-16.0,-8.8,  11.7, 25.3, 0, 7, 'tire'); box(8.8,16.0,  11.7, 25.3, 0, 7, 'tire');
+    box(-13.6,13.6, 18.8,22.2, 13.2,14.4, 'body');          // 後ろの翼
+    box(-13.8,-12.0, 18.6,24.2, 10.0,15.0, 'dark');         // 立て板
+    box(12.0,13.8,   18.6,24.2, 10.0,15.0, 'dark');
+    box(-6.4,-4.4, 16.8,19.8, zt(18),13.2, 'dark');          // 支柱
+    box(4.4,6.4,   16.8,19.8, zt(18),13.2, 'dark');
+    // 灯火（前面・後面に少し浮かせて貼る）
+    F.push([[[-9.4,-31.0,5.6], [-3.6,-31.0,5.6], [-3.6,-31.0,7.2], [-9.4,-31.0,7.2]], 'lamp']);
+    F.push([[[3.6,-31.0,5.6], [9.4,-31.0,5.6], [9.4,-31.0,7.2], [3.6,-31.0,7.2]], 'lamp']);
+    F.push([[[-3.2,30.2,6.4], [-11.0,30.2,6.4], [-11.0,30.2,8.6], [-3.2,30.2,8.6]], 'tail']);
+    F.push([[[11.0,30.2,6.4], [3.2,30.2,6.4], [3.2,30.2,8.6], [11.0,30.2,8.6]], 'tail']);
+    return F;
+  }
+  // 光は上と、少し前の左から
+  var L3 = [ -0.30, -0.35, 0.89 ];
   function car3(cam, vp, c, hex, alpha){
+    if (!CAR3) CAR3 = buildCar3();
     var ti = Math.max(0, Math.min(TRACK.length-1, c.idx || 0));
-    var z = TRACK[ti].h, d = Math.hypot(c.x - cam.x, c.y - cam.y);
+    var base = TRACK[ti].h, d = Math.hypot(c.x - cam.x, c.y - cam.y);
+    if (d > 2400) return;
     var fogT = Math.min(0.85, d / 1500), rgb = rgbOf(hex);
-    ctx.globalAlpha = alpha;
-    boxC(cam, vp, c.x, c.y, z + 2, c.ang, -30, 30, 14.5, z + 11, rgb, fogT);
-    boxC(cam, vp, c.x, c.y, z + 11, c.ang, -18, 8, 11.5, z + 19, [rgb[0]*0.55, rgb[1]*0.55, rgb[2]*0.55], fogT);
-    // 尾灯（後ろから見えるときだけ）
     var fx = Math.sin(c.ang), fy = -Math.cos(c.ang), rx = Math.cos(c.ang), ry = Math.sin(c.ang);
-    if ((c.x - fx*30 - cam.x)*(-fx) + (c.y - fy*30 - cam.y)*(-fy) < 0){
-      for (var sd = -1; sd <= 1; sd += 2){
-        var bx = c.x - fx*30.5 + rx*sd*10, by = c.y - fy*30.5 + ry*sd*10;
-        polyC(vp, [toC(cam, bx - rx*3.5, by - ry*3.5, z + 6), toC(cam, bx + rx*3.5, by + ry*3.5, z + 6),
-                   toC(cam, bx + rx*3.5, by + ry*3.5, z + 9.5), toC(cam, bx - rx*3.5, by - ry*3.5, z + 9.5)], '#FF3B30');
-      }
+    // 上から見た絵の座標(x 右, y 後ろ) → 世界
+    function Wd(p){ return [c.x + rx*p[0] - fx*p[1], c.y + ry*p[0] - fy*p[1], base + p[2]]; }
+    var cw = Wd([0, 0, 8]);
+    var list = [];
+    for (var k = 0; k < CAR3.length; k++){
+      var f = CAR3[k], P = f[0], wp = [], cx = 0, cy = 0, cz = 0, i;
+      for (i = 0; i < P.length; i++){ var w = Wd(P[i]); wp.push(w); cx += w[0]; cy += w[1]; cz += w[2]; }
+      cx /= P.length; cy /= P.length; cz /= P.length;
+      // 面の向き（外向きにそろえる）
+      var ax = wp[1][0]-wp[0][0], ay = wp[1][1]-wp[0][1], az = wp[1][2]-wp[0][2];
+      var bx = wp[2][0]-wp[0][0], by = wp[2][1]-wp[0][1], bz = wp[2][2]-wp[0][2];
+      var nx = ay*bz - az*by, ny = az*bx - ax*bz, nz = ax*by - ay*bx;
+      var nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+      if ((cx-cw[0])*nx + (cy-cw[1])*ny + (cz-cw[2])*nz < 0){ nx = -nx; ny = -ny; nz = -nz; }
+      if ((cam.x-cx)*nx + (cam.y-cy)*ny + (cam.z-cz)*nz <= 0) continue;    // 裏向き
+      var cp = [];
+      for (i = 0; i < wp.length; i++) cp.push(toC(cam, wp[i][0], wp[i][1], wp[i][2]));
+      var zz = 0; for (i = 0; i < cp.length; i++) zz += cp[i].Z;
+      // 明るさ（車の向きに対する光なので、車の座標に戻してから当てる）
+      var lx = nx*rx + ny*ry, ly = -(nx*fx + ny*fy);
+      var li = 0.50 + 0.50 * Math.max(0, lx*L3[0] + ly*L3[1] + nz*L3[2]);
+      var col, kind = f[1];
+      if (kind === 'body') col = fogC([rgb[0]*li, rgb[1]*li, rgb[2]*li], fogT);
+      else if (kind === 'roof') col = fogC([Math.min(255, rgb[0]*1.12), Math.min(255, rgb[1]*1.12), Math.min(255, rgb[2]*1.12)], fogT);
+      else if (kind === 'glass') col = fogC([16 + 14*li, 19 + 16*li, 26 + 20*li], fogT * 0.6);
+      else if (kind === 'tire') col = '#0B0C10';
+      else if (kind === 'dark') col = fogC([20, 22, 28], fogT);
+      else if (kind === 'lamp') col = '#FFE9BC';
+      else col = '#FF3B30';
+      list.push({ z: zz / cp.length, pts: cp, col: col, lit: kind === 'lamp' || kind === 'tail' });
     }
-    // 前照灯（前から見えるときだけ。ミラーに映る後ろの車）
-    if ((c.x + fx*30 - cam.x)*fx + (c.y + fy*30 - cam.y)*fy < 0){
-      for (var sd2 = -1; sd2 <= 1; sd2 += 2){
-        var hx = c.x + fx*30.5 + rx*sd2*9, hy = c.y + fy*30.5 + ry*sd2*9;
-        polyC(vp, [toC(cam, hx - rx*4, hy - ry*4, z + 5), toC(cam, hx + rx*4, hy + ry*4, z + 5),
-                   toC(cam, hx + rx*4, hy + ry*4, z + 8.5), toC(cam, hx - rx*4, hy - ry*4, z + 8.5)], '#FFE9BC');
-      }
-    }
+    list.sort(function(a, b){ return b.z - a.z; });
+    ctx.globalAlpha = alpha;
+    for (k = 0; k < list.length; k++) polyC(vp, list[k].pts, list[k].col, !list[k].lit && alpha >= 1);
     ctx.globalAlpha = 1;
   }
 
