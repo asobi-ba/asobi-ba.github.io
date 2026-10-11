@@ -214,6 +214,13 @@
   .veil .who b{font-size:19px;color:var(--text);letter-spacing:.14em}
   .veil .line{display:inline-block;font-size:14.5px;color:var(--text);line-height:1.7}
   .veil .narr{display:inline-block;font-size:13.5px;color:#A9A59B;line-height:1.75;font-style:normal}
+  .veil .fade{opacity:0;animation:fadeIn 1.2s ease forwards}
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:none } }
+  @media (prefers-reduced-motion:reduce){ .veil .fade{opacity:1;animation:none} }
+  .veil .chips{display:inline-flex;flex-wrap:wrap;justify-content:center;gap:4px 10px;max-width:20em;font-size:12.5px;color:#C4C0B6}
+  .veil .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+  .veil .chip i{display:inline-block;width:10px;height:7px;border:1px solid rgba(232,228,216,.5)}
+  .veil .endbtn{margin-top:4px;font:inherit;font-size:12.5px;line-height:1.2;padding:5px 10px;cursor:pointer;color:var(--amber-hi);background:transparent;border:1px solid rgba(255,194,122,.5);border-radius:2px}
   .veil .narr.end{margin-top:6px;color:var(--amber-hi);letter-spacing:.12em}
   .veil .sub{font-family:'Oxanium',monospace;font-size:11px;letter-spacing:.18em;color:var(--cool)}
   .go{
@@ -1135,11 +1142,26 @@
     { c:0, who:'ゲン', tag:'沢鳴りの頭', col:'#3F8F5A',           // (26.30)
       P:DRV_A, pow:0.9,
       pre:'この沢で俺の前を走ったやつはいない。並んで出るぞ。当たっても文句は言うなよ。',
-      win:'杉ノ沢はおまえのものだ。……鷹ノ巣へ行け。あそこの連中は桁が違う。',
+      win:'杉ノ沢はおまえのものだ。……蛇骨へ行け。あそこのヘアピンで、一度 心を折られてこい。',
       lose:'まだ早い。杉ノ沢の路面と話せるようになってから来い。' },
+    { c:2, who:'ジロウ', tag:'蛇骨の案内人', col:'#A8743A',       // (29.77)
+      P:DRV_C, pow:0.62,
+      pre:'杉ノ沢の新顔か。ここに来たやつは、みんなヘアピンで心が折れる。',
+      win:'折れなかったな。……奥へ進め。',
+      lose:'ほら、折れた。ヘアピンは、向きを先に変えるんだ。' },
+    { c:2, who:'ハヤテ', tag:'蛇骨の双子・弟', col:'#7A5FD0',     // (28.35)
+      P:DRV_C, pow:0.78,
+      pre:'ジロウさんを抜いた？　じゃあ次はぼく。ここのヘアピンは目をつぶっても曲がれるよ。',
+      win:'……姉さんに伝えなきゃ。本物が来たって。',
+      lose:'まだ目を開けて走ってるね。' },
+    { c:2, who:'シズカ', tag:'蛇骨の主', col:'#2E5AA8',           // (26.78)
+      P:DRV_C, pow:0.93,
+      pre:'弟が世話になったね。蛇骨を抜けたいなら、まず私を越えて。',
+      win:'リズムは合格。……次は鷹ノ巣。あそこは腕より度胸の峠だよ。',
+      lose:'蛇骨は、速さよりリズム。もう一度。' },
     { c:1, who:'リク', tag:'鷹ノ巣の新鋭', col:'#E3C34A',         // (30.03)
       P:DRV_B, top:200,
-      pre:'杉ノ沢の王様が来たって？　ここは踏みっぱなしの峠だ。度胸が無いと置いていかれるよ。',
+      pre:'蛇骨の主を抜いたって？　ここは踏みっぱなしの峠だ。度胸が無いと置いていかれるよ。',
       win:'直線で離せなかった……。立ち上がりで負けてる。',
       lose:'長い下りの直線、まだ怖がってるでしょ。見えたよ。' },
     { c:1, who:'サエ', tag:'鷹ノ巣の夜叉', col:'#B04A8F',         // (26.60)
@@ -1150,23 +1172,8 @@
     { c:1, who:'カシワギ', tag:'鷹ノ巣最速', col:'#A8B0B8',       // (25.12)
       P:DRV_B, top:250,
       pre:'十年、この峠で負けていない。……話は走ってからだ。',
-      win:'「黒い轍」を知っているか。蛇骨の奥に出る。……おまえなら会えるかもしれん。',
+      win:'「黒い轍」を知っているか。今夜、杉ノ沢に出る。……おまえが走りはじめた、あの沢だ。',
       lose:'速い。だが、まだ荒い。' },
-    { c:2, who:'ジロウ', tag:'蛇骨の案内人', col:'#A8743A',       // (29.77)
-      P:DRV_C, pow:0.62,
-      pre:'黒い轍を探しに来たか。みんなそう言って、ここのヘアピンで心が折れる。',
-      win:'折れなかったな。……奥へ進め。',
-      lose:'ほら、折れた。ヘアピンは、向きを先に変えるんだ。' },
-    { c:2, who:'ハヤテ', tag:'蛇骨の双子・弟', col:'#7A5FD0',     // (28.35)
-      P:DRV_C, pow:0.78,
-      pre:'ジロウさんを抜いた？　じゃあ次はぼく。ここのヘアピンは目をつぶっても曲がれるよ。',
-      win:'……姉さんに伝えなきゃ。本物が来たって。',
-      lose:'まだ目を開けて走ってるね。' },
-    { c:2, who:'シズカ', tag:'蛇骨の主', col:'#2E5AA8',           // (26.78)
-      P:DRV_C, pow:0.93,
-      pre:'弟が世話になったね。黒い轍に会いたいなら、まず私を越えて。',
-      win:'行きなさい。今夜、杉ノ沢に出るよ。……全部、あそこから始まったんだから。',
-      lose:'蛇骨は、速さよりリズム。もう一度。' },
     { c:0, who:'黒い轍', tag:'？？？', col:'#3A3A42', boss:true, // (24.03)
       P:DRV_A, pow:1,
       pre:'杉ノ沢、午前二時。スタート地点に、真っ黒な車が停まっていた。運転席の顔は見えない。',
@@ -1516,6 +1523,7 @@
   var wiped = false;
   function showTitle(){
     if (story) { showStory(); return; }
+    ending = false;
     st = 'title'; reset();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
     if (window.SCOREBOARD) SCOREBOARD.top('wadachi-' + (courseIdx + 1));
@@ -1603,6 +1611,7 @@
     return '<span class="who"><i style="background:' + c.col + '"></i>' + c.tag + '　<b>' + c.who + '</b></span>';
   }
   function showStory(){
+    ending = false;
     st = 'title'; reset();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
     if (window.SCOREBOARD) SCOREBOARD.hide();
@@ -1613,7 +1622,8 @@
       whoLine() + '<br>' +
       (c.boss ? '<span class="narr">' + c.pre + '</span>' : '<span class="line">「' + c.pre + '」</span>') + '<br>' +
       '<span class="gh">並んでスタート。相手より先にゴールすれば勝ち。車はぶつかる。</span>' +
-      (cleared > chap ? '<br><span class="gh">勝ち抜き済み</span>' : '');
+      (cleared > chap ? '<br><span class="gh">勝ち抜き済み</span>' : '') +
+      (cleared >= CHAPTERS.length ? '<br><button type="button" class="nav endbtn" data-end="1">エンディングを見る</button>' : '');
     goBtn.textContent = 'バトル開始';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1632,9 +1642,8 @@
     veilBody.innerHTML = chapHead() + '<br>' +
       '<span class="big">' + fmt(time) + '</span><br>' + res + '<br>' +
       whoLine() + '<br>' +
-      (c.boss ? '<span class="narr">' + talk + '</span>' : '<span class="line">「' + talk + '」</span>') +
-      (last ? '<br><span class="narr end">黒い轍 ― 完 ―<br>峠に、新しい噂が立ちはじめる。</span>' : '');
-    goBtn.textContent = win ? (last ? 'もういちど最終戦' : '次の相手へ') : 'もういちど';
+      (c.boss ? '<span class="narr">' + talk + '</span>' : '<span class="line">「' + talk + '」</span>');
+    goBtn.textContent = win ? (last ? 'エンディングへ' : '次の相手へ') : 'もういちど';
     veil.classList.remove('off');
     countEl.classList.add('off');
   }
@@ -1646,13 +1655,51 @@
     if (now - goAt < 350) return;
     goAt = now;
     if (st === 'pause') { setPause(false); return; }
-    if (story && st === 'done' && lastWin && chap < CHAPTERS.length - 1) {
-      chap++; lastWin = false; setCourse(CH().c); return;
+    if (ending) { showStory(); return; }
+    if (story && st === 'done' && lastWin) {
+      if (chap < CHAPTERS.length - 1) { chap++; lastWin = false; setCourse(CH().c); }
+      else { lastWin = false; showEnding(); }
+      return;
     }
     startGame();
   }
+
+  // ---------- エンディング ----------
+  // 1行ずつ ゆっくり浮かび上がらせる（動きを減らす設定の人には最初から全部出す）
+  var ending = false;
+  var EPILOGUE = [
+    'それから――',
+    'タケは今も、週末になると杉ノ沢にいる。<br>新顔を見つけては、橙色の車の話をするらしい。',
+    '蛇骨の双子は、ヘアピンの入り方を一から組み直しているという。',
+    '鷹ノ巣のカシワギは、十年ぶりに自分の走りを見直しはじめた。',
+    'あの黒い車を見た者は、それきりいない。',
+    'そして深夜の峠には、新しい噂が立ちはじめた。<br>――ブレーキを踏まずに曲がる、橙色の車がいる、と。'
+  ];
+  function showEnding(){
+    ending = true;
+    st = 'title';
+    if (window.SCOREBOARD) SCOREBOARD.hide();
+    veilTitle.textContent = 'ENDING';
+    var h = '', i, d = 0;
+    for (i = 0; i < EPILOGUE.length; i++, d += 1.6) {
+      h += '<span class="narr fade" style="animation-delay:' + d.toFixed(1) + 's">' + EPILOGUE[i] + '</span><br>';
+    }
+    var chips = '';
+    for (i = 0; i < CHAPTERS.length; i++) {
+      chips += '<span class="chip"><i style="background:' + CHAPTERS[i].col + '"></i>' + CHAPTERS[i].who + '</span>';
+    }
+    h += '<span class="fade" style="animation-delay:' + d.toFixed(1) + 's"><span class="gh">勝ち抜いた相手</span><br>' +
+         '<span class="chips">' + chips + '</span></span><br>';
+    d += 1.4;
+    h += '<span class="narr end fade" style="animation-delay:' + d.toFixed(1) + 's">黒い轍　― 完 ―<br>遊んでくれて、ありがとう。</span>';
+    veilBody.innerHTML = h;
+    goBtn.textContent = 'おわり';
+    veil.classList.remove('off');
+    countEl.classList.add('off');
+  }
   veilBody.addEventListener('click', function(e){
     var b = e.target;
+    if (b && b.getAttribute && b.getAttribute('data-end')) { showEnding(); return; }
     if (!b || !b.getAttribute || !b.getAttribute('data-nav') || b.disabled) return;
     var n = chap + parseInt(b.getAttribute('data-nav'), 10);
     if (n < 0 || n > Math.min(cleared, CHAPTERS.length - 1)) return;
