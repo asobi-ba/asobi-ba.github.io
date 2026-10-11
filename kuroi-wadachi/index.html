@@ -329,7 +329,7 @@
         <button class="tab on" type="button" data-c="0"><b>杉ノ沢</b><i>バランス</i></button>
         <button class="tab"    type="button" data-c="1"><b>鷹ノ巣</b><i>高速・長い</i></button>
         <button class="tab"    type="button" data-c="2"><b>蛇骨</b><i>ヘアピン連続</i></button>
-        <button class="tab story" type="button" data-c="s"><b>物語</b><i>ライバル10人</i></button>
+        <button class="tab story" type="button" data-c="s"><b>物語</b><i>ライバル13人</i></button>
       </div>
 
       <div class="dash" id="dash">
@@ -1179,57 +1179,74 @@
   var DRV_A = {l0:120,lk:0.35,th:0.1,ik:5,cw:4,sv:20,v0:110,g:0.01,ma:1.2};   // 杉ノ沢向け
   var DRV_B = {l0:80,lk:0.35,th:0.04,ik:5,cw:4,sv:30,v0:110,g:0.01,ma:0.6};   // 鷹ノ巣向け
   var DRV_C = {l0:40,lk:0.15,th:0.1,ik:2,cw:4,sv:12,v0:110,g:0.01,ma:0.6};   // 蛇骨向け
+  // c はコース番号（0〜2 下り、3〜5 上り）、wx はその戦の天気（物語では天気を選べず、戦ごとに決まっている）。
+  // 運転のしかた P と強さ pow・top は、その条件で node に全コースを走らせて選んだ（() は単独のタイム）。
   var CHAPTERS = [
-    { c:0, who:'タケ', tag:'週末組', col:'#D8D6CC',              // (29.97)
+    { c:0, wx:'clear', who:'タケ', tag:'週末組', col:'#D8D6CC',              // (29.97)
       P:DRV_A, pow:0.66,
       pre:'見ない顔だな。杉ノ沢は初めてか？　ついて来られたら、上の連中に紹介してやるよ。',
       win:'……マジかよ。ブレーキ無しであの突っ込み？　おまえ、ちょっと面白いな。',
       lose:'まあ最初はそんなもんだ。ラインを覚えりゃ速くなる。' },
-    { c:0, who:'ミオ', tag:'チーム沢鳴り', col:'#4A7FD8',         // (28.20)
+    { c:0, wx:'clear', who:'ミオ', tag:'チーム沢鳴り', col:'#4A7FD8',         // (28.20)
       P:DRV_A, pow:0.78,
       pre:'タケを抜いた新顔ってあんた？　沢鳴りの看板、安くないよ。',
-      win:'ヘアピンの入りが私より半車身深い……。頭に話しとく。',
+      win:'ヘアピンの入りが私より半車身深い……。上りのノボルに勝てたら、頭に会わせてあげる。',
       lose:'突っ込みすぎ。滑らせるのと、流されるのは違うから。' },
-    { c:0, who:'ゲン', tag:'沢鳴りの頭', col:'#3F8F5A',           // (26.30)
-      P:DRV_A, pow:0.9,
-      pre:'この沢で俺の前を走ったやつはいない。並んで出るぞ。当たっても文句は言うなよ。',
-      win:'杉ノ沢はおまえのものだ。……蛇骨へ行け。あそこのヘアピンで、一度 心を折られてこい。',
-      lose:'まだ早い。杉ノ沢の路面と話せるようになってから来い。' },
-    { c:2, who:'ジロウ', tag:'蛇骨の案内人', col:'#A8743A',       // (29.77)
-      P:DRV_C, pow:0.62,
-      pre:'杉ノ沢の新顔か。ここに来たやつは、みんなヘアピンで心が折れる。',
-      win:'折れなかったな。……奥へ進め。',
-      lose:'ほら、折れた。ヘアピンは、向きを先に変えるんだ。' },
-    { c:2, who:'ハヤテ', tag:'蛇骨の双子・弟', col:'#7A5FD0',     // (28.35)
+    { c:3, wx:'clear', who:'ノボル', tag:'沢鳴りの上り屋', col:'#C9A23A',     // (30.73)
+      P:{l0:80,lk:0.15,th:0.04,ik:5,cw:10,sv:20,v0:110,g:0.03,ma:0.6}, pow:0.86,
+      pre:'下りで速いのは当たり前。上りはごまかしが利かないぜ。アクセルを抜いた瞬間に置いていく。',
+      win:'上りでも踏み負けない、か……。頭が呼んでる。今夜は雨だってさ。',
+      lose:'上りは滑らせすぎると前に進まない。角度は浅く、だ。' },
+    { c:0, wx:'rain', who:'ゲン', tag:'沢鳴りの頭', col:'#3F8F5A',           // (26.52)
+      P:{l0:80,lk:0.35,th:0.1,ik:5,cw:10,sv:20,v0:110,g:0.03,ma:1.2}, pow:0.78,
+      pre:'雨の沢へようこそ。濡れた路面で俺の前を走ったやつはいない。並んで出るぞ。当たっても文句は言うなよ。',
+      win:'雨の杉ノ沢はおまえのものだ。……蛇骨へ行け。あそこのヘアピンで、一度 心を折られてこい。',
+      lose:'雨の日は踏ん張りが落ちる。早めに向きを入れろ。' },
+    { c:2, wx:'fog', who:'ジロウ', tag:'蛇骨の案内人', col:'#A8743A',        // (28.35)
       P:DRV_C, pow:0.78,
-      pre:'ジロウさんを抜いた？　じゃあ次はぼく。ここのヘアピンは目をつぶっても曲がれるよ。',
-      win:'……姉さんに伝えなきゃ。本物が来たって。',
-      lose:'まだ目を開けて走ってるね。' },
-    { c:2, who:'シズカ', tag:'蛇骨の主', col:'#2E5AA8',           // (26.78)
+      pre:'杉ノ沢の新顔か。今夜の蛇骨は霧だ。先の見えないヘアピンで、みんな心が折れる。',
+      win:'霧の中で折れなかったな。……奥へ進め。',
+      lose:'ほら、折れた。見えないなら、道を体で覚えるんだ。' },
+    { c:2, wx:'clear', who:'ハヤテ', tag:'蛇骨の双子・弟', col:'#7A5FD0',     // (26.78)
       P:DRV_C, pow:0.93,
-      pre:'弟が世話になったね。蛇骨を抜けたいなら、まず私を越えて。',
+      pre:'ジロウさんを抜いた？　じゃあ次はぼく。ここのヘアピンは目をつぶっても曲がれるよ。',
+      win:'……姉さんに伝えなきゃ。本物が来たって。でも、その前にリュウさんがいる。',
+      lose:'まだ目を開けて走ってるね。' },
+    { c:5, wx:'clear', who:'リュウ', tag:'蛇骨の登り龍', col:'#B5452F',       // (28.63)
+      P:{l0:40,lk:0.35,th:0.1,ik:2,cw:4,sv:12,v0:70,g:0.01,ma:1.2}, pow:0.78,
+      pre:'ハヤテを抜いたって？　蛇骨を下るだけなら誰でもできる。下から上ってみな。',
+      win:'上りのヘアピンで並ばれたのは初めてだ。……シズカが待ってる。雨の夜にしか走らない人だ。',
+      lose:'上りのヘアピンは、出口で踏める向きを先に作るんだ。' },
+    { c:2, wx:'rain', who:'シズカ', tag:'蛇骨の主', col:'#2E5AA8',           // (24.83)
+      P:{l0:40,lk:0.35,th:0.04,ik:5,cw:4,sv:20,v0:110,g:0.03,ma:1.2}, pow:0.94,
+      pre:'弟が世話になったね。雨の蛇骨を抜けたいなら、まず私を越えて。',
       win:'リズムは合格。……次は鷹ノ巣。あそこは腕より度胸の峠だよ。',
-      lose:'蛇骨は、速さよりリズム。もう一度。' },
-    { c:1, who:'リク', tag:'鷹ノ巣の新鋭', col:'#E3C34A',         // (30.03)
-      P:DRV_B, top:200,
+      lose:'雨の蛇骨は、速さよりリズム。もう一度。' },
+    { c:1, wx:'clear', who:'リク', tag:'鷹ノ巣の新鋭', col:'#E3C34A',         // (26.00)
+      P:{l0:120,lk:0.15,th:0.1,ik:5,cw:4,sv:30,v0:70,g:0.01,ma:0.6}, top:240,
       pre:'蛇骨の主を抜いたって？　ここは踏みっぱなしの峠だ。度胸が無いと置いていかれるよ。',
-      win:'直線で離せなかった……。立ち上がりで負けてる。',
+      win:'直線で離せなかった……。立ち上がりで負けてる。ミヤビさんに知らせなきゃ。',
       lose:'長い下りの直線、まだ怖がってるでしょ。見えたよ。' },
-    { c:1, who:'サエ', tag:'鷹ノ巣の夜叉', col:'#B04A8F',         // (26.60)
-      P:DRV_B, top:225,
-      pre:'リクに勝ったくらいで上がってきたの？　高速コーナーは、腕より覚悟。',
-      win:'180キロで横を向ける人、久しぶりに見た。',
+    { c:4, wx:'fog', who:'ミヤビ', tag:'鷹ノ巣の上り職人', col:'#5FA88A',     // (26.55)
+      P:{l0:120,lk:0.35,th:0.04,ik:5,cw:4,sv:30,v0:70,g:0.03,ma:0.6}, pow:0.86,
+      pre:'霧の鷹ノ巣を上るのは、私くらいのものよ。見えない高速コーナーを、踏んだまま抜けられる？',
+      win:'あなた、怖がらないのね。……サエが雨を待ってるわ。',
+      lose:'見えないなら、白線を信じなさい。' },
+    { c:1, wx:'rain', who:'サエ', tag:'鷹ノ巣の夜叉', col:'#B04A8F',         // (27.08)
+      P:{l0:80,lk:0.35,th:0.1,ik:5,cw:4,sv:30,v0:110,g:0.03,ma:0.6}, top:220,
+      pre:'ミヤビさんに勝ったくらいで来たの？　雨の高速コーナーは、腕より覚悟。',
+      win:'180キロで横を向ける人、雨の夜に見るとは思わなかった。',
       lose:'アウトに逃げたね。覚悟が足りない。' },
-    { c:1, who:'カシワギ', tag:'鷹ノ巣最速', col:'#A8B0B8',       // (25.12)
+    { c:1, wx:'clear', who:'カシワギ', tag:'鷹ノ巣最速', col:'#A8B0B8',       // (25.12)
       P:DRV_B, top:250,
       pre:'十年、この峠で負けていない。……話は走ってからだ。',
-      win:'「黒い轍」を知っているか。今夜、杉ノ沢に出る。……おまえが走りはじめた、あの沢だ。',
+      win:'「黒い轍」を知っているか。霧の夜、杉ノ沢に出る。……おまえが走りはじめた、あの沢だ。',
       lose:'速い。だが、まだ荒い。' },
-    { c:0, who:'黒い轍', tag:'？？？', col:'#3A3A42', boss:true, // (24.03)
+    { c:0, wx:'fog', who:'黒い轍', tag:'？？？', col:'#3A3A42', boss:true,   // (24.03)
       P:DRV_A, pow:1,
-      pre:'杉ノ沢、午前二時。スタート地点に、真っ黒な車が停まっていた。運転席の顔は見えない。',
+      pre:'霧の杉ノ沢、午前二時。スタート地点に、真っ黒な車が停まっていた。運転席の顔は見えない。',
       win:'ゴールの先で、黒い車は静かに止まった。窓が少しだけ開いて、ひと言。<br>「——次は、おまえが轍を残す番だ」',
-      lose:'黒い車はゴールの先で一瞬だけ止まり、また闇に消えた。路面には、黒い轍だけが残っていた。' }
+      lose:'黒い車は霧の中へ消えた。路面には、黒い轍だけが残っていた。' }
   ];
   var PROLOGUE = '深夜の峠に、ブレーキを踏まずに曲がる走り屋がいるという。<br>' +
                  '路面に黒い轍だけを残して消える。顔を見た者はいない。<br>' +
@@ -1397,22 +1414,25 @@
     var t = TUNES[tune] || TUNES.std;
     c.turnK = t.turnK || 0; c.gripK = t.gripK || 0; c.pow = t.pow || 0; c.top = t.top || 0;
   }
-  function setWeather(w){
+  var userWx = 'clear';     // 自分で選んだ天気（物語の間は戦ごとの天気になる）
+  function setWeather(w, temp){
     weather = WXNAME[w] ? w : 'clear';
     WGRIP = weather === 'rain' ? 0.82 : 1;
+    if (temp) return;
+    userWx = weather;
     try { localStorage.setItem('wadachi.weather', weather); } catch(e){}
   }
   function loadOpts(){
     var w = null, t = null, m = null;
     try { w = localStorage.getItem('wadachi.weather'); t = localStorage.getItem('wadachi.tune'); m = localStorage.getItem('wadachi.mode'); } catch(e){}
     setWeather(w || 'clear');
-    tune = (cleared >= CHAPTERS.length && TUNES[t]) ? t : 'std';
+    tune = (allClear && TUNES[t]) ? t : 'std';
     mode = m === 'drift' ? 'drift' : 'time';
   }
   function boardKey(){ return (mode === 'drift' ? 'wadachi-d' : 'wadachi-') + (courseIdx + 1) + cond(); }
   function driftBest(){ try { return parseInt(localStorage.getItem('wadachi.drift.' + SL()), 10) || 0; } catch(e){ return 0; } }
   function tuneRow(){
-    if (cleared < CHAPTERS.length) return '';
+    if (!allClear) return '';
     var h = '';
     for (var k in TUNES) h += '<button type="button" class="dirb' + (tune === k ? ' on' : '') + '" data-tune="' + k + '">' + TUNES[k].name + '</button>';
     return '<br><span class="gh">車の仕上げ' + (TUNES[tune].note ? '：' + TUNES[tune].note : '') + '</span><br><span class="dirrow">' + h + '</span>';
@@ -1425,7 +1445,7 @@
     return '<br><span class="gh" style="color:#FFC27A">条件：' + why.join('・') + '　この条件だけの順位表とベストに残ります</span>';
   }
 
-  // 車の色（物語を全部勝ち抜くと選べる）。はじめの橙と、勝ち抜いた10人の車の色。
+  // 車の色（物語を全部勝ち抜くと選べる）。はじめの橙と、物語の相手（13人）の車の色。
   var MYCOL0 = '#F0873A';
   function palette(){
     var a = [{ who:'はじめの色', col: MYCOL0 }];
@@ -1442,10 +1462,10 @@
     var v = null;
     try { v = localStorage.getItem('wadachi.color'); } catch(e){}
     // 選べるのは勝ち抜いた後だけ（保存が残っていても、条件を満たさなければ橙）
-    setMyCol(cleared >= CHAPTERS.length && v ? v : MYCOL0, false);
+    setMyCol(allClear && v ? v : MYCOL0, false);
   }
   function colorRow(){
-    if (cleared < CHAPTERS.length) return '';
+    if (!allClear) return '';
     var pl = palette(), h = '', cur = '';
     for (var i = 0; i < pl.length; i++){
       var on = pl[i].col === COL.body;
@@ -1455,14 +1475,26 @@
     }
     return '<br><span class="gh">車の色（' + cur + '）</span><br><span class="pal">' + h + '</span>';
   }
+  // 物語は13戦に作り変えたので、進み具合は新しい置き場（wadachi.story2）で最初から。
+  // 前の物語（10戦）を全部勝ち抜いていた人は、ごほうび（車の色・仕上げ）を使えるまま残す。
+  var allClear = false;
   function loadStory(){
     try {
-      cleared = Math.max(0, Math.min(CHAPTERS.length, parseInt(localStorage.getItem('wadachi.story'), 10) || 0));
+      cleared = Math.max(0, Math.min(CHAPTERS.length, parseInt(localStorage.getItem('wadachi.story2'), 10) || 0));
+      allClear = localStorage.getItem('wadachi.allclear') === '1';
+      if (!allClear && (parseInt(localStorage.getItem('wadachi.story'), 10) || 0) >= 10) {
+        allClear = true; localStorage.setItem('wadachi.allclear', '1');
+      }
     } catch(e){ cleared = 0; }
+    if (cleared >= CHAPTERS.length) allClear = true;
     chap = Math.min(cleared, CHAPTERS.length - 1);
   }
   function saveStory(){
-    try { localStorage.setItem('wadachi.story', String(cleared)); } catch(e){}
+    if (cleared >= CHAPTERS.length) allClear = true;
+    try {
+      localStorage.setItem('wadachi.story2', String(cleared));
+      if (allClear) localStorage.setItem('wadachi.allclear', '1');
+    } catch(e){}
   }
 
   // ---------- ゴースト（自己ベストの走りを並走させる） ----------
@@ -1754,6 +1786,8 @@
   }
   function setCourse(i){
     courseIdx = i;
+    setWeather(story ? CH().wx : userWx, true);
+    if (typeof syncWx === 'function') syncWx();
     buildTrack();
     best = bests[SL()] || 0;
     ghost = ghosts[SL()];
@@ -1779,7 +1813,7 @@
   function chapHead(){
     return '<span class="chap">' +
       '<button type="button" class="nav" data-nav="-1"' + (chap > 0 ? '' : ' disabled') + ' aria-label="前の章">◀</button>' +
-      '<span>第' + (chap + 1) + '戦 ／ ' + CHAPTERS.length + '　' + COURSES[CH().c].name + '</span>' +
+      '<span>第' + (chap + 1) + '戦 ／ ' + CHAPTERS.length + '　' + COURSES[CH().c].name + '・' + (COURSES[CH().c].rev ? '上り' : '下り') + '・' + WXNAME[CH().wx] + '</span>' +
       '<button type="button" class="nav" data-nav="1"' + (chap < Math.min(cleared, CHAPTERS.length - 1) ? '' : ' disabled') + ' aria-label="次の章">▶</button>' +
       '</span>';
   }
@@ -1801,7 +1835,7 @@
       '<span class="gh">並んでスタート。相手より先にゴールすれば勝ち。車はぶつかる。</span>' +
       (cleared > chap ? '<br><span class="gh">勝ち抜き済み</span>' : '') +
       (cleared >= CHAPTERS.length ? '<br><button type="button" class="nav endbtn" data-end="1">エンディングを見る</button>' : '') +
-      colorRow() + tuneRow() + condNote();
+      colorRow() + tuneRow();
     goBtn.textContent = 'バトル開始';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1851,6 +1885,7 @@
     'タケは今も、週末になると杉ノ沢にいる。<br>新顔を見つけては、橙色の車の話をするらしい。',
     '蛇骨の双子は、ヘアピンの入り方を一から組み直しているという。',
     '鷹ノ巣のカシワギは、十年ぶりに自分の走りを見直しはじめた。',
+    '上りの三人は、今度は上りで勝負しろと言ってきかない。',
     'あの黒い車を見た者は、それきりいない。',
     'そして深夜の峠には、新しい噂が立ちはじめた。<br>――ブレーキを踏まずに曲がる、橙色の車がいる、と。'
   ];
@@ -1938,9 +1973,10 @@
   }
   if (vwBtn) vwBtn.addEventListener('click', function(){ toggleView(); vwBtn.blur(); });
   var wxBtn = document.getElementById('wxBtn');
-  function syncWx(){ if (wxBtn) { wxBtn.textContent = '天気 ' + WXNAME[weather]; wxBtn.title = '晴れ→雨→霧（W キーでも）'; } }
+  function syncWx(){ if (wxBtn) { wxBtn.textContent = '天気 ' + WXNAME[weather]; wxBtn.title = story ? '物語の天気は戦ごとに決まっています' : '晴れ→雨→霧（W キーでも）'; } }
   function cycleWx(){
     if (st === 'play' || st === 'count') return;          // 走っている途中では変えない
+    if (story) return;                                     // 物語の天気は戦ごとに決まっている
     setWeather(weather === 'clear' ? 'rain' : weather === 'rain' ? 'fog' : 'clear');
     syncWx();
     condChanged();
