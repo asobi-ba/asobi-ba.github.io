@@ -228,6 +228,31 @@
   }
   .veil .sw.on{outline:2px solid var(--text);outline-offset:2px}
   .veil .sw:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+  /* リプレイ */
+  .rpui{
+    position:absolute;left:6px;right:6px;top:6px;line-height:1.2;
+    display:flex;align-items:center;gap:5px;flex-wrap:wrap;pointer-events:none;
+  }
+  .rpui .rptag{
+    font-family:'Oxanium',monospace;font-weight:700;font-size:12px;letter-spacing:.2em;
+    color:#E0453A;margin-right:auto;animation:rpblink 1.2s steps(2) infinite;
+  }
+  @keyframes rpblink{ 50%{ opacity:.25 } }
+  @media (prefers-reduced-motion:reduce){ .rpui .rptag{animation:none} }
+  .rpui button{
+    pointer-events:auto;cursor:pointer;
+    font-family:'Zen Kaku Gothic New',sans-serif;font-size:12px;font-weight:700;
+    padding:5px 8px;color:var(--text);background:rgba(11,12,16,.72);
+    border:1px solid rgba(232,228,216,.35);border-radius:2px;
+  }
+  .rpui button.on{color:var(--amber-hi);border-color:rgba(255,194,122,.6)}
+  .rpui button:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+  .veil .rprow{display:inline-flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:2px}
+  .veil .rpb{
+    font:inherit;font-size:13px;font-weight:700;line-height:1.2;padding:6px 11px;cursor:pointer;
+    color:var(--cool);background:transparent;border:1px solid rgba(95,211,224,.55);border-radius:2px;
+  }
+  .veil .rpb:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
   .veil .narr.end{margin-top:6px;color:var(--amber-hi);letter-spacing:.12em}
   .veil .sub{font-family:'Oxanium',monospace;font-size:11px;letter-spacing:.18em;color:var(--cool)}
   .go{
@@ -309,6 +334,12 @@
         <canvas id="game" aria-label="黒い轍 ゲーム画面"></canvas>
         <div class="glow" id="glow" aria-hidden="true"></div>
         <div class="count off" id="count" aria-hidden="true"><span id="countN">3</span></div>
+        <div class="rpui" id="rpui" hidden>
+          <span class="rptag">REPLAY</span>
+          <button type="button" id="rpView">視点 中継</button>
+          <button type="button" id="rpSlow">スロー</button>
+          <button type="button" id="rpEnd">終わる</button>
+        </div>
         <div class="veil" id="veil">
           <h2 id="veilTitle">TOUGE TIME ATTACK</h2>
           <p id="veilBody">
@@ -332,6 +363,7 @@
     <span>P＝やすみ</span>
     <span>G＝ゴースト</span>
     <span>V＝視点（上から／運転席）</span>
+    <span>リプレイ中：V＝視点　S＝スロー　Esc＝終わる</span>
   </div>
 </div>
 
@@ -1294,7 +1326,7 @@
     if (!(w > 40)) { w = 280; h = w * H / W; }
     w = Math.round(w); h = Math.round(h);
     // 運転席の視点は塗る量が多いので、細かさを少し落として軽くする（2倍 → 1.5倍まで）
-    var want = Math.min(window.devicePixelRatio || 1, view === 'cab' ? 1.5 : 2);
+    var want = Math.min(window.devicePixelRatio || 1, is3D() ? 1.5 : 2);
     if (w === lastW && h === lastH && want === dpr) return;
     lastW = w; lastH = h;
     dpr = want;
@@ -1544,7 +1576,7 @@
     score = 0; pending = 0; mult = 1; driftT = 0; idleT = 0; sliding = false;
     marks.length = 0; smoke.length = 0; lastWheels = null; hitT = 0; stuckT = 0; holdT = 0; steerV = 0;
     lastSlip = 0; lastSp = 0;
-    rec.length = 0;
+    rec.length = 0; rivRec.length = 0;
     riv = null; rivFin = 0; rivWheels = null; bumpT = 0;
     rivAt.length = 0; myAt.length = 0;
     if (story) {
@@ -1575,7 +1607,7 @@
       '左右だけ。アクセルは自動、ブレーキは無い。<br>' +
       'ヘアピンは曲がりきれない。<br><b>滑らせて速度を落とす</b>のが唯一の減速。<br>' +
       '<span class="gh">' + ghostLine() + '</span>' +
-      (wiped ? '<br><span class="gh" style="color:#F0873A">走り方を変えたので、前の決まりで出した記録は消しました</span>' : '');
+      (wiped ? '<br><span class="gh" style="color:#F0873A">走り方を変えたので、前の決まりで出した記録は消しました</span>' : '') + replayRow();
     goBtn.textContent = 'スタート';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1583,13 +1615,18 @@
   function finish(miss){
     st = 'done';
     bank();
+    // リプレイ用にこの走りを取っておく（いま並走していたゴーストも。このあとベスト更新で入れ替わるため先に）
+    var gNow = (!story && curGhost()) ? curGhost() : null;
+    lastRun = { course: courseIdx, story: story, rec: rec.slice(),
+                riv: story && rivRec.length ? rivRec.slice() : null,
+                gh: gNow ? { arr: gNow.arr, col: gNow.col } : null };
     if (story) { storyResult(miss); return; }
     if (miss > 0) {                       // 通過点を飛ばしている＝ショートカット
       if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.fail(); }
       veilTitle.textContent = 'SHORTCUT';
       veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
         '<span class="big">' + fmt(time) + '</span><br>' +
-        '<span class="sub" style="color:#E0453A">タイム無効　関門を ' + miss + ' 箇所 くぐっていません</span>';
+        '<span class="sub" style="color:#E0453A">タイム無効　関門を ' + miss + ' 箇所 くぐっていません</span>' + replayRow();
       goBtn.textContent = 'もういちど';
       veil.classList.remove('off');
       countEl.classList.add('off');
@@ -1607,7 +1644,7 @@
     veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
       '<span class="big">' + fmt(time) + '</span><br>' +
       '<span class="sub">' + (isNew ? 'NEW BEST' : 'BEST ' + fmt(best)) + '</span><br>' +
-      'ドリフト ' + score.toLocaleString('ja-JP') + ' 点';
+      'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + replayRow();
     goBtn.textContent = 'もういちど';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1685,7 +1722,7 @@
     veilBody.innerHTML = chapHead() + '<br>' +
       '<span class="big">' + fmt(time) + '</span><br>' + res + '<br>' +
       whoLine() + '<br>' +
-      (c.boss ? '<span class="narr">' + talk + '</span>' : '<span class="line">「' + talk + '」</span>');
+      (c.boss ? '<span class="narr">' + talk + '</span>' : '<span class="line">「' + talk + '」</span>') + replayRow();
     goBtn.textContent = win ? (last ? 'エンディングへ' : '次の相手へ') : 'もういちど';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1697,6 +1734,7 @@
     var now = Date.now();
     if (now - goAt < 350) return;
     goAt = now;
+    if (st === 'replay') { endReplay(); return; }
     if (st === 'pause') { setPause(false); return; }
     if (ending) { showStory(); return; }
     if (story && st === 'done' && lastWin) {
@@ -1743,6 +1781,7 @@
   }
   veilBody.addEventListener('click', function(e){
     var b = e.target;
+    if (b && b.getAttribute && b.getAttribute('data-replay')) { startReplay(b.getAttribute('data-replay')); return; }
     if (b && b.getAttribute && b.getAttribute('data-col')) {
       setMyCol(b.getAttribute('data-col'), true);
       showStory();
@@ -1805,11 +1844,13 @@
     // ボタンにフォーカスがあるときの Enter はボタン側の click で動く（二重に進めない）
     var onBtn = e.target && e.target.tagName === 'BUTTON';
     if (k === ' ' || (k === 'Enter' && !onBtn)) {
-      if (st === 'title' || st === 'done' || st === 'pause') goAction();
+      if (st === 'title' || st === 'done' || st === 'pause' || st === 'replay') goAction();
     }
     if (k === 'p' || k === 'P') { if (st === 'play') setPause(true); else if (st === 'pause') setPause(false); }
     if (k === 'g' || k === 'G') toggleGh();
-    if (k === 'v' || k === 'V') toggleView();
+    if (k === 'v' || k === 'V') { if (st === 'replay') cycleRview(); else toggleView(); }
+    if ((k === 's' || k === 'S') && st === 'replay') toggleSlow();
+    if (k === 'Escape' && st === 'replay') endReplay();
   });
   window.addEventListener('keyup', function(e){ keys[e.key] = false; });
   window.addEventListener('blur', function(){ keys = {}; touchDir = 0; });
@@ -1848,6 +1889,7 @@
       if (countT <= 0) { st = 'play'; countEl.classList.add('off'); }
       return;
     }
+    if (st === 'replay') { stepReplay(dt); return; }
     if (st !== 'play') return;
 
     time += dt;
@@ -1908,6 +1950,9 @@
     while (rec.length / 4 * GH_DT <= time && rec.length < 4 * 4000) {
       rec.push(Math.round(car.x*10)/10, Math.round(car.y*10)/10,
                Math.round(car.ang*1000)/1000, idx);
+      // リプレイ用に、物語の相手の走りも同じ形で控える
+      if (story && riv) rivRec.push(Math.round(riv.x*10)/10, Math.round(riv.y*10)/10,
+                                    Math.round(riv.ang*1000)/1000, riv.idx);
     }
 
     // ゴール（関門を全部くぐっているか確認する）
@@ -2180,7 +2225,14 @@
   }
 
   function draw(){
-    if (view === 'cab') {
+    var cv0 = curView();
+    if (cv0 === 'chase' || cv0 === 'tv') {
+      drawExt(cv0);
+      drawSpeed();
+      drawProfile();
+      return;
+    }
+    if (cv0 === 'cab') {
       drawCab();
       drawGhostGap();
       drawRivalGap();
@@ -2372,8 +2424,7 @@
   }
 
   function drawGhost(){
-    if (st !== 'play' || story) return;
-    var c = curGhost();
+    var c = ghostNow();
     if (!c) return;
     ghost = c.arr;
     var g = ghostPose(time);
@@ -2409,6 +2460,229 @@
     ctx.restore();
   }
 
+
+  // ================= リプレイ =================
+  // 走りの記録（0.05秒ごとの 位置・向き・コース上の番号）を再生する。
+  // 自分の直前の走り（物語なら相手の車も、タイムアタックなら一緒に走ったゴーストも）と、
+  // ゴーストの走りの2種類。再生中は視点を 中継→追いかけ→運転席→上から と切り替えられる。
+  var rp = null;                 // 再生中の情報
+  var lastRun = null;            // 直前の自分の走り
+  var rivRec = [];               // 物語の相手の走り（自分の記録と同じ形）
+  var RVIEWS = ['tv', 'chase', 'cab', 'top'];
+  var RVNAME = { tv:'中継', chase:'追いかけ', cab:'運転席', top:'上から' };
+  var rview = 'tv';
+  var chase = { x:0, y:0, z:0, yaw:0 };
+  var rpui = document.getElementById('rpui');
+  var rpView = document.getElementById('rpView');
+  var rpSlow = document.getElementById('rpSlow');
+  var rpEnd = document.getElementById('rpEnd');
+
+  // 自分の車の色（ゴーストのリプレイ中はゴーストの色）
+  function myCol(){ return st === 'replay' && rp && rp.col ? rp.col : COL.body; }
+  // いま描くべき視点（リプレイ中はリプレイの視点）
+  function curView(){ return st === 'replay' ? rview : view; }
+  function is3D(){ var v = curView(); return v === 'cab' || v === 'chase' || v === 'tv'; }
+
+  // いま一緒に走らせるゴースト（無ければ null）
+  function ghostNow(){
+    if (st === 'replay') return rp && rp.gh ? rp.gh : null;
+    if (st === 'play' && !story) return curGhost();
+    return null;
+  }
+
+  // 記録 arr の t 秒時点の姿
+  function poseOf(arr, t){
+    var n = arr.length / 4;
+    var f = Math.max(0, Math.min(n - 1.0001, t / GH_DT)), i = Math.floor(f), u = f - i;
+    var a = i*4, b = Math.min(n-1, i+1)*4;
+    var da = arr[b+2] - arr[a+2];
+    while (da >  Math.PI) da -= Math.PI*2;
+    while (da < -Math.PI) da += Math.PI*2;
+    return { x: arr[a] + (arr[b]-arr[a])*u, y: arr[a+1] + (arr[b+1]-arr[a+1])*u,
+             ang: arr[a+2] + da*u, idx: u < 0.5 ? arr[a+3] : arr[b+3] };
+  }
+
+  // 結果の画面などに出すリプレイのボタン
+  function replayRow(){
+    var h = '';
+    if (lastRun && lastRun.course === courseIdx && lastRun.story === story && lastRun.rec.length >= 8)
+      h += '<button type="button" class="rpb" data-replay="me">▶ リプレイ</button>';
+    if (!story && curGhost()) h += '<button type="button" class="rpb" data-replay="ghost">▶ ゴーストのリプレイ</button>';
+    return h ? '<br><span class="rprow">' + h + '</span>' : '';
+  }
+
+  function startReplay(kind){
+    var src;
+    if (kind === 'me') {
+      if (!lastRun || lastRun.course !== courseIdx) return;
+      src = { rec: lastRun.rec, riv: lastRun.riv, gh: lastRun.gh };
+    } else {
+      var g = curGhost();
+      if (!g) return;
+      src = { rec: g.arr, riv: null, gh: null, col: g.col.body };   // ゴーストの走りはゴーストの色で
+    }
+    rp = { kind: kind, arr: src.rec, riv: src.riv, gh: src.gh, col: src.col || null, t: 0, speed: 1,
+           end: (src.rec.length / 4 - 1) * GH_DT,
+           prev: { st: st, title: veilTitle.textContent, body: veilBody.innerHTML, btn: goBtn.textContent } };
+    st = 'replay';
+    if (window.SCOREBOARD) SCOREBOARD.hide();
+    veil.classList.add('off'); countEl.classList.add('off');
+    marks.length = 0; smoke.length = 0; lastWheels = null;
+    score = 0; pending = 0; mult = 1;
+    if (!story) riv = null;
+    applyReplay(0, 0);
+    camX = car.x - W/2; camY = car.y - H/2;
+    cabYaw = car.ang; cabPitch = pitchAt(idx);
+    chase.yaw = car.ang;
+    chase.x = car.x - Math.sin(car.ang)*80; chase.y = car.y + Math.cos(car.ang)*80;
+    chase.z = (TRACK[idx] ? TRACK[idx].h : 0) + 30;
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.start(courseIdx);
+    rpui.hidden = false;
+    syncRp();
+    layout();
+    lastT = 0;
+  }
+  function endReplay(){
+    if (!rp) return;
+    var p = rp.prev;
+    rp = null;
+    rpui.hidden = true;
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
+    st = p.st;
+    if (st === 'title') reset();
+    veilTitle.textContent = p.title; veilBody.innerHTML = p.body; goBtn.textContent = p.btn;
+    veil.classList.remove('off');
+    layout();
+  }
+  function syncRp(){
+    rpView.textContent = '視点 ' + RVNAME[rview];
+    rpSlow.textContent = rp && rp.speed < 1 ? 'スロー中' : 'スロー';
+    rpSlow.classList.toggle('on', !!(rp && rp.speed < 1));
+  }
+  function cycleRview(){
+    rview = RVIEWS[(RVIEWS.indexOf(rview) + 1) % RVIEWS.length];
+    try { localStorage.setItem('wadachi.rview', rview); } catch(e){}
+    syncRp(); layout();
+  }
+  function toggleSlow(){ if (rp) { rp.speed = rp.speed < 1 ? 1 : 0.35; syncRp(); } }
+  rpView.addEventListener('click', function(){ cycleRview(); rpView.blur(); });
+  rpSlow.addEventListener('click', function(){ toggleSlow(); rpSlow.blur(); });
+  rpEnd.addEventListener('click', function(){ endReplay(); rpEnd.blur(); });
+  try { var rv0 = localStorage.getItem('wadachi.rview'); if (RVIEWS.indexOf(rv0) >= 0) rview = rv0; } catch(e){}
+
+  // 記録から t 秒時点の車の状態を組み立て、自分の車（と相手の車）に入れる
+  function applyReplay(t, dt){
+    var h = 0.03;
+    var p = poseOf(rp.arr, t), pa = poseOf(rp.arr, Math.max(0, t - h)), pb = poseOf(rp.arr, t + h);
+    var span = Math.max(1e-3, (Math.min(rp.end, t + h) - Math.max(0, t - h)));
+    car.x = p.x; car.y = p.y; car.ang = p.ang;
+    car.vx = (pb.x - pa.x) / span; car.vy = (pb.y - pa.y) / span;
+    idx = p.idx; car.idx = idx; time = t;
+    var sp = Math.hypot(car.vx, car.vy);
+    // ハンドル：向きの変わる速さから逆算（式は drive と同じ）
+    var dA = pb.ang - pa.ang;
+    while (dA >  Math.PI) dA -= Math.PI*2;
+    while (dA < -Math.PI) dA += Math.PI*2;
+    var w = dA / span;
+    steerV = Math.max(-1, Math.min(1, w / (TURN * Math.max(0.32, Math.min(1, sp/70)))));
+    car.steerV = steerV;
+    var fx = Math.sin(car.ang), fy = -Math.cos(car.ang), rx = Math.cos(car.ang), ry = Math.sin(car.ang);
+    var fwd = car.vx*fx + car.vy*fy, lat = car.vx*rx + car.vy*ry;
+    var slip = Math.abs(Math.atan2(lat, Math.max(18, fwd)));
+    lastSlip = slip; lastSp = sp;
+    sliding = (slip > 0.18 && sp > 80);
+    if (dt > 0) {
+      if (sliding) { driftT += dt; mult = Math.min(8, 1 + Math.floor(driftT / 1.5)); pending += slip * sp * dt * 1.6; idleT = 0; }
+      else { idleT += dt; if (pending > 0 && idleT > 0.4) bank(); }
+      // 轍と煙（走っているときと同じ作り方）
+      var wl = { x: car.x - rx*13.8 - fx*18, y: car.y - ry*13.8 - fy*18 };
+      var wr = { x: car.x + rx*13.8 - fx*18, y: car.y + ry*13.8 - fy*18 };
+      if (Math.abs(lat) > 34) {
+        if (lastWheels) {
+          marks.push({ x1:lastWheels.l.x, y1:lastWheels.l.y, x2:wl.x, y2:wl.y, h:TRACK[idx].h });
+          marks.push({ x1:lastWheels.r.x, y1:lastWheels.r.y, x2:wr.x, y2:wr.y, h:TRACK[idx].h });
+          while (marks.length > 1400) marks.shift();
+        }
+        if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1 });
+        lastWheels = { l:wl, r:wr };
+      } else lastWheels = null;
+      for (var s = smoke.length-1; s >= 0; s--){
+        var sm = smoke[s]; sm.r += 20*dt; sm.life -= dt*1.2;
+        if (sm.life <= 0) smoke.splice(s, 1);
+      }
+    }
+    // 物語の相手
+    if (rp.riv && riv) {
+      var q = poseOf(rp.riv, t), qa = poseOf(rp.riv, Math.max(0, t - h)), qb = poseOf(rp.riv, t + h);
+      riv.x = q.x; riv.y = q.y; riv.ang = q.ang; riv.idx = q.idx;
+      riv.vx = (qb.x - qa.x) / span; riv.vy = (qb.y - qa.y) / span;
+      var rfx = Math.sin(riv.ang), rfy = -Math.cos(riv.ang);
+      riv.fwd = riv.vx*rfx + riv.vy*rfy; riv.lat = riv.vx*Math.cos(riv.ang) + riv.vy*Math.sin(riv.ang);
+      riv.steerV = 0; riv.hitT = 0;
+    }
+  }
+
+  function stepReplay(dt){
+    var d = dt * rp.speed;
+    rp.t += d;
+    if (rp.t >= rp.end) { endReplay(); return; }
+    applyReplay(rp.t, d);
+    // 上からの視点のカメラ（走っているときと同じ追い方）
+    var tx = car.x + car.vx*0.42 - W/2, ty = car.y + car.vy*0.42 - H/2;
+    var k = Math.min(1, 6.5*d);
+    camX += (tx - camX) * k; camY += (ty - camY) * k;
+    followCab(d);
+    // 追いかけカメラ：進む向きの後ろ上から。滑ると車が斜めに見える
+    var sp = Math.hypot(car.vx, car.vy);
+    var dirA = sp > 20 ? Math.atan2(car.vx, -car.vy) : car.ang;
+    chase.yaw += wrapA(dirA - chase.yaw) * Math.min(1, 3.5*d);
+    var base = TRACK[idx] ? TRACK[idx].h : 0;
+    var cx = car.x - Math.sin(chase.yaw)*82, cy = car.y + Math.cos(chase.yaw)*82;
+    var kk = Math.min(1, 7*d);
+    chase.x += (cx - chase.x) * kk; chase.y += (cy - chase.y) * kk;
+    chase.z += (base + 30 - chase.z) * kk;
+  }
+
+  // 中継カメラ：コースの外側（曲がる側の反対）に、ほぼ一定の間隔で立てる
+  var tvCams = [], tvFor = -1;
+  function buildTv(){
+    tvCams = []; tvFor = courseIdx;
+    var n = TRACK.length;
+    for (var i = 24; i < n - 8; i += 46){
+      var a = TRACK[Math.max(0, i-10)].a, b = TRACK[Math.min(n-1, i+10)].a;
+      var side = (b - a) > 0 ? -1 : 1;
+      if (Math.abs(b - a) < 0.05) side = (i / 46) % 2 ? 1 : -1;
+      var t = TRACK[i], o = side * (HALF + WALL + 30);
+      tvCams.push({ i: i, x: t.x + t.nx*o, y: t.y + t.ny*o, z: t.h + 34 });
+    }
+  }
+
+  // 外からの視点（中継・追いかけ）
+  function drawExt(v){
+    var base = TRACK[idx] ? TRACK[idx].h : 0;
+    var cam, F, tz = base + 7;
+    if (v === 'tv') {
+      if (tvFor !== courseIdx) buildTv();
+      var best = null, bd = 1e9;
+      for (var i = 0; i < tvCams.length; i++){
+        var dd = Math.abs(tvCams[i].i - (idx + 12));
+        if (dd < bd) { bd = dd; best = tvCams[i]; }
+      }
+      var dx = car.x - best.x, dy = car.y - best.y, hd = Math.hypot(dx, dy);
+      var fov = Math.max(0.22, Math.min(1.1, 2 * Math.atan(75 / Math.max(1, hd))));   // 遠いほど寄せる
+      F = (W/2) / Math.tan(fov/2);
+      cam = makeCam(best.x, best.y, best.z, Math.atan2(dx, -dy), Math.atan2(tz - best.z, hd));
+    } else {
+      var lx = car.x + Math.sin(chase.yaw)*24, ly = car.y - Math.cos(chase.yaw)*24;
+      var ddx = lx - chase.x, ddy = ly - chase.y;
+      F = (W/2) / Math.tan(1.05/2);
+      cam = makeCam(chase.x, chase.y, chase.z, Math.atan2(ddx, -ddy), Math.atan2(tz - chase.z, Math.hypot(ddx, ddy)));
+    }
+    var vp = { x:0, y:0, w:W, h:H, cx:W/2, hor:H*0.45, F:F, flip:false, wide:(W/2)/F, marks:true, self:true };
+    ctx.save();
+    scene(cam, vp);
+    ctx.restore();
+  }
 
   // ================= 運転席からの視点 =================
   // コースの点（x, y と高さ h）をそのまま3次元に起こして、運転席の目の高さから見る。
@@ -2650,7 +2924,8 @@
       if (r) { r.col = colOf(CAR3.F[k][1], r.li); list.push(r); }
     }
     list.sort(function(a, b){ return b.z - a.z; });
-    for (k = 0; k < list.length; k++) polyC(vp, list[k].pts, list[k].col, false);
+    // 面どうしの細い隙間が線になって見えるので、不透明のときだけ縁を同じ色でなぞる（車1台なので軽い）
+    for (k = 0; k < list.length; k++) polyC(vp, list[k].pts, list[k].col, alpha >= 1);
     // 飾り（灯火・ホイール）は車体のあと。奥行きで並べると、貼りついている面に負けて消えることがある
     for (k = 0; k < CAR3.D.length; k++){
       r = prep(CAR3.D[k]);
@@ -2773,8 +3048,9 @@
     // 車（遠いものから）
     var cars = [];
     if (story && riv) cars.push({ c: riv, col: riv.col.body, a: 1 });
-    if (!story && st === 'play'){
-      var gc = curGhost();
+    if (vp.self) cars.push({ c: car, col: myCol(), a: 1 });   // 外からの視点では自分の車も
+    {
+      var gc = ghostNow();
       if (gc){
         ghost = gc.arr;
         var gp = ghostPose(time);
@@ -2829,7 +3105,7 @@
       // 坂では車体も前後に傾く（下りは前が下がる）
       return toC(cam, car.x + fx*f + rx*r, car.y + fy*f + ry*r, base + z - f*g);
     }
-    var body = COL.body;
+    var body = myCol();
     var parts = [];
     function add(pts, fill){
       var zs = 0;
@@ -2912,7 +3188,7 @@
     ctx.closePath(); ctx.fill();
     ctx.globalAlpha = 1;
 
-    drawCarNew(ctx, COL, steerV, sliding, lastSlip, blink, false);
+    drawCarNew(ctx, myCol() === COL.body ? COL : { body: myCol(), lampCore: COL.lampCore }, steerV, sliding, lastSlip, blink, false);
     if (COL.body === '#3A3A42' && !blink) {
       ctx.strokeStyle = 'rgba(200,205,220,0.35)'; ctx.lineWidth = 1.2;
       bodyPath(ctx, 0, 0); ctx.stroke();
@@ -3120,7 +3396,7 @@ function shade(hex, k){
   // ---------- 表示 ----------
   var prev = {};
   function syncDash(){
-    var t = (st === 'play' || st === 'pause' || st === 'done') ? time : 0;
+    var t = (st === 'play' || st === 'pause' || st === 'done' || st === 'replay') ? time : 0;
     var ts = fmt(t);
     if (prev.t !== ts) { vTime.textContent = ts; prev.t = ts; }
     var bs = best ? fmt(best) : '--';
@@ -3153,7 +3429,7 @@ function shade(hex, k){
     if (!lastT) { lastT = now; return; }
     var dt = Math.min(0.05, (now - lastT)/1000);
     lastT = now;
-    if (window.WADACHI_AUDIO) WADACHI_AUDIO.tick(st, sliding, lastSlip, lastSp);
+    if (window.WADACHI_AUDIO) WADACHI_AUDIO.tick(st === 'replay' ? 'play' : st, sliding, lastSlip, lastSp);
     if (st !== 'pause') {
       acc += dt;
       var g = 0;
