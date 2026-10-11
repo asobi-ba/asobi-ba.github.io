@@ -48,6 +48,18 @@ const GAMES = {
   'gyaku-3':   { order: 'asc',  max: 3600,     unit: '秒' }
 };
 
+// 黒い轍は「コース × 天気 × 車の仕上げ × タイム／ドリフト点」の組み合わせごとに順位表を持つ。
+// 一覧に全部書くと 108 本になるので、名前の形で見分ける。
+//   wadachi-<1〜6>[-rain|-fog][-turn|-speed]  … タイム（小さいほど上位）
+//   wadachi-d<1〜6>[-rain|-fog][-turn|-speed] … ドリフト点（大きいほど上位）
+const WADACHI_RE = /^wadachi-(d?)([1-6])(-(rain|fog))?(-(turn|speed))?$/;
+function ruleOf(game){
+  if (GAMES[game]) return GAMES[game];
+  const m = WADACHI_RE.exec(game || '');
+  if (!m) return null;
+  return m[1] ? { order: 'desc', max: 99999999, unit: '点' } : { order: 'asc', max: 3600, unit: '秒' };
+}
+
 // 名前に使わせない語句。網であって、完全ではない。
 // 目に余るものが出たら /admin/remove で消す前提。
 const NG = [
@@ -116,7 +128,7 @@ async function ensure(env) {
 }
 
 async function board(env, game) {
-  const dir = GAMES[game].order === 'asc' ? 'ASC' : 'DESC';
+  const dir = ruleOf(game).order === 'asc' ? 'ASC' : 'DESC';
   const r = await env.DB
     .prepare('SELECT name, score, at FROM scores WHERE game = ? ORDER BY score ' + dir + ', at ASC LIMIT ' + TOP)
     .bind(game).all();
@@ -158,11 +170,11 @@ export default {
     // --- 一覧を返す ---
     if (path === '/board' && req.method === 'GET') {
       const game = url.searchParams.get('game') || '';
-      if (!GAMES[game]) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
+      if (!ruleOf(game)) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
       return json({
         game: game,
-        unit: GAMES[game].unit,
-        order: GAMES[game].order,
+        unit: ruleOf(game).unit,
+        order: ruleOf(game).order,
         list: await board(env, game)
       }, 200, head);
     }
@@ -173,7 +185,7 @@ export default {
       try { body = await req.json(); } catch (e) { return json({ error: '中身が読めません' }, 400, head); }
 
       const game = String(body.game || '');
-      const rule = GAMES[game];
+      const rule = ruleOf(game);
       if (!rule) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
 
       const name = cleanName(body.name);
@@ -222,7 +234,7 @@ export default {
     // --- 1位の走りの記録を返す ---
     if (path === '/ghost' && req.method === 'GET') {
       const game = url.searchParams.get('game') || '';
-      if (!GAMES[game]) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
+      if (!ruleOf(game)) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
       const g = await env.DB
         .prepare('SELECT name, score, data, at FROM ghosts WHERE game = ?')
         .bind(game).first();
@@ -236,7 +248,7 @@ export default {
       try { body = await req.json(); } catch (e) { return json({ error: '中身が読めません' }, 400, head); }
 
       const game = String(body.game || '');
-      const rule = GAMES[game];
+      const rule = ruleOf(game);
       if (!rule) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
 
       const name = cleanName(body.name);
@@ -288,7 +300,7 @@ export default {
       let body;
       try { body = await req.json(); } catch (e) { return json({ error: '中身が読めません' }, 400, head); }
       const game = String(body.game || '');
-      if (!GAMES[game]) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
+      if (!ruleOf(game)) return json({ error: 'そのゲームは取り扱っていません' }, 400, head);
 
       if (path === '/admin/clear') {
         const r = await env.DB.prepare('DELETE FROM scores WHERE game = ?').bind(game).run();

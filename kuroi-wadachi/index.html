@@ -1392,7 +1392,7 @@
     turn:  { name:'曲がり重視', note:'よく曲がり、よく踏ん張る。最高速は少し低い', turnK:1.12, gripK:1.10, top:270 },
     speed: { name:'速さ重視',   note:'加速と最高速が上。そのぶん滑りやすい',         pow:1.12,  gripK:0.92, top:310 }
   };
-  function isRanked(){ return weather === 'clear' && tune === 'std'; }
+
   function applyTune(c){
     var t = TUNES[tune] || TUNES.std;
     c.turnK = t.turnK || 0; c.gripK = t.gripK || 0; c.pow = t.pow || 0; c.top = t.top || 0;
@@ -1409,8 +1409,8 @@
     tune = (cleared >= CHAPTERS.length && TUNES[t]) ? t : 'std';
     mode = m === 'drift' ? 'drift' : 'time';
   }
-  function boardKey(){ return (mode === 'drift' ? 'wadachi-d' : 'wadachi-') + (courseIdx + 1); }
-  function driftBest(){ try { return parseInt(localStorage.getItem('wadachi.drift.' + courseIdx), 10) || 0; } catch(e){ return 0; } }
+  function boardKey(){ return (mode === 'drift' ? 'wadachi-d' : 'wadachi-') + (courseIdx + 1) + cond(); }
+  function driftBest(){ try { return parseInt(localStorage.getItem('wadachi.drift.' + SL()), 10) || 0; } catch(e){ return 0; } }
   function tuneRow(){
     if (cleared < CHAPTERS.length) return '';
     var h = '';
@@ -1418,11 +1418,11 @@
     return '<br><span class="gh">車の仕上げ' + (TUNES[tune].note ? '：' + TUNES[tune].note : '') + '</span><br><span class="dirrow">' + h + '</span>';
   }
   function condNote(){
-    if (isRanked()) return '';
+    if (weather === 'clear' && tune === 'std') return '';
     var why = [];
     if (weather !== 'clear') why.push(WXNAME[weather]);
     if (tune !== 'std') why.push(TUNES[tune].name);
-    return '<br><span class="gh" style="color:#FFC27A">' + why.join('・') + 'の走りは、ベストと順位表には残りません</span>';
+    return '<br><span class="gh" style="color:#FFC27A">条件：' + why.join('・') + '　この条件だけの順位表とベストに残ります</span>';
   }
 
   // 車の色（物語を全部勝ち抜くと選べる）。はじめの橙と、勝ち抜いた10人の車の色。
@@ -1469,24 +1469,37 @@
   var GH_DT = 0.05;                    // 0.05秒ごとに位置を控える（毎秒20回）
   var rec = [];                        // いま走っている記録 x,y,向き,通過点
   var ghost = null;                    // 手本にする記録
-  var ghosts = [null,null,null,null,null,null];   // 下り3本＋上り3本
-  var ghostT = [0,0,0,0,0,0];                // その手本を出したときのタイム
+  // 自己ベストの走り・タイムは「コース＋条件」ごとに持つ（例：'0'＝杉ノ沢の晴れ・標準、'3-rain-speed'）
+  var ghosts = {}, ghostT = {};                // その手本を出したときのタイム
   // 0=切 1=自己ベスト 2=順位表1位
   var ghostMode = 1;
-  var topG = [null,null,null,null,null,null];         // 順位表1位の走り {name, score, arr}
+  var topG = {};                       // 順位表1位の走り（順位表の名前ごと）         // 順位表1位の走り {name, score, arr}
   var GAPI = 'https://game-scores.pdylplplp.workers.dev';
   var GCOL  = { body:'#5FD3E0', lampCore:'#CFEFF5' };   // 自分のベスト
   var GCOL2 = { body:'#E8C07A', lampCore:'#FFEBC4' };   // 1位の人
 
+  // いまのコースと条件の置き場の名前。初めて使う置き場は、その場で読み込む
+  function cond(){ return (weather !== 'clear' ? '-' + weather : '') + (tune !== 'std' ? '-' + tune : ''); }
+  function SL(){ var sl = String(courseIdx) + cond(); slotLoad(sl); return sl; }
+  function slotLoad(sl){
+    if (sl in ghosts) return;
+    try {
+      var v = localStorage.getItem('wadachi.ghost.' + sl);
+      ghosts[sl] = v ? JSON.parse(v) : null;
+      if (ghosts[sl] && (!ghosts[sl].length || ghosts[sl].length % 4)) ghosts[sl] = null;
+      ghostT[sl] = parseFloat(localStorage.getItem('wadachi.ghostT.' + sl)) || 0;
+      var b = localStorage.getItem('wadachi.time.' + sl);
+      bests[sl] = b ? (parseFloat(b) || 0) : 0;
+    } catch(e){ ghosts[sl] = null; ghostT[sl] = 0; bests[sl] = 0; }
+  }
+  // 天気や車の仕上げを変えたら、その条件のベスト・ゴーストに入れ替える
+  function condChanged(){
+    best = bests[SL()] || 0;
+    ghost = ghosts[SL()];
+    if (!topG[gameKey()]) fetchTop();
+    prev = {};
+  }
   function loadGhosts(){
-    for (var i=0;i<6;i++){
-      try {
-        var v = localStorage.getItem('wadachi.ghost.' + i);
-        ghosts[i] = v ? JSON.parse(v) : null;
-        if (ghosts[i] && (!ghosts[i].length || ghosts[i].length % 4)) ghosts[i] = null;
-        ghostT[i] = parseFloat(localStorage.getItem('wadachi.ghostT.' + i)) || 0;
-      } catch(e){ ghosts[i] = null; ghostT[i] = 0; }
-    }
     try {
       var m = localStorage.getItem('wadachi.ghostMode');
       if (m !== null) ghostMode = Math.max(0, Math.min(2, parseInt(m, 10) || 0));
@@ -1494,21 +1507,23 @@
     } catch(e){}
   }
   function saveGhost(t){
-    ghosts[courseIdx] = rec.slice();
-    ghostT[courseIdx] = Math.round(t * 1000) / 1000;
+    var sl = SL();
+    ghosts[sl] = rec.slice();
+    ghostT[sl] = Math.round(t * 1000) / 1000;
     try {
-      localStorage.setItem('wadachi.ghost.' + courseIdx, JSON.stringify(ghosts[courseIdx]));
-      localStorage.setItem('wadachi.ghostT.' + courseIdx, String(ghostT[courseIdx]));
+      localStorage.setItem('wadachi.ghost.' + sl, JSON.stringify(ghosts[sl]));
+      localStorage.setItem('wadachi.ghostT.' + sl, String(ghostT[sl]));
     } catch(e){}                       // 入りきらなくても走行そのものは止めない
   }
   // いま並走させる手本と、その色・持ち主
   function curGhost(){
     if (ghostMode === 2) {
-      var t = topG[courseIdx];
+      var t = topG[gameKey()];
       return t ? { arr: t.arr, col: GCOL2, who: t.name, time: t.score } : null;
     }
-    if (ghostMode === 1 && ghosts[courseIdx]) {
-      return { arr: ghosts[courseIdx], col: GCOL, who: '自己ベスト', time: ghostT[courseIdx] };
+    var sl = SL();
+    if (ghostMode === 1 && ghosts[sl]) {
+      return { arr: ghosts[sl], col: GCOL, who: '自己ベスト', time: ghostT[sl] };
     }
     return null;
   }
@@ -1564,19 +1579,19 @@
   function myName(){
     try { return localStorage.getItem('score.name') || ''; } catch(e){ return ''; }
   }
-  function gameKey(){ return 'wadachi-' + (courseIdx + 1); }
+  function gameKey(){ return 'wadachi-' + (courseIdx + 1) + cond(); }
 
   // 順位表1位の走りを取りに行く（つながらなくても遊べる）
-  function fetchTop(i){
-    var key = 'wadachi-' + (i + 1);
+  function fetchTop(){
+    var key = gameKey();
     try {
       fetch(GAPI + '/ghost?game=' + encodeURIComponent(key), { cache:'no-store' })
         .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(d){
-          if (!d || d.none) { topG[i] = null; return; }
+          if (!d || d.none) { topG[key] = null; return; }
           var arr = unpackRec(d.data);
-          topG[i] = arr ? { name: d.name, score: d.score, arr: arr } : null;
-          if (i === courseIdx && (st === 'title' || st === 'done')) showTitle2();
+          topG[key] = arr ? { name: d.name, score: d.score, arr: arr } : null;
+          if (key === gameKey() && (st === 'title' || st === 'done')) showTitle2();
         })
         .catch(function(){});
     } catch(e){}
@@ -1585,18 +1600,18 @@
   function sendGhost(t){
     var nm = myName();
     if (!nm) return;                       // 名前を出していない人は送らない
-    var cur = topG[courseIdx];
+    var cur = topG[gameKey()];
     if (cur && t >= cur.score) return;     // 1位より遅いなら送らない
     var data = packRec(rec);
     if (!data || data.length > 120000) return;
-    var key = gameKey(), i = courseIdx;
+    var key = gameKey();
     try {
       fetch(GAPI + '/ghost', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ game: key, name: nm, score: t, data: data })
       }).then(function(r){ return r.ok ? r.json() : null; })
-        .then(function(d){ if (d && d.ok) fetchTop(i); })
+        .then(function(d){ if (d && d.ok && key === gameKey()) fetchTop(); })
         .catch(function(){});
     } catch(e){}
   }
@@ -1617,18 +1632,16 @@
     } catch(e){ return false; }
   }
 
-  var bests = [0,0,0,0,0,0];
+  var bests = {};
   function loadBest(){
-    try {
-      for (var i=0;i<6;i++){ var v = localStorage.getItem('wadachi.time.'+i); if (v) bests[i] = parseFloat(v)||0; }
-    } catch(e){}
-    best = bests[courseIdx];
     loadGhosts();
-    ghost = ghosts[courseIdx];
+    best = bests[SL()] || 0;
+    ghost = ghosts[SL()];
   }
   function saveBest(){
-    bests[courseIdx] = best;
-    try { localStorage.setItem('wadachi.time.'+courseIdx, String(best)); } catch(e){}
+    var sl = SL();
+    bests[sl] = best;
+    try { localStorage.setItem('wadachi.time.' + sl, String(best)); } catch(e){}
   }
   function fmt(t){ return t.toFixed(2); }
 
@@ -1705,29 +1718,17 @@
       countEl.classList.add('off');
       return;
     }
-    if (!isRanked()) {
-      if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(false); }
-      veilTitle.textContent = 'GOAL';
-      veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
-        '<span class="big">' + (mode === 'drift' ? score.toLocaleString('ja-JP') : fmt(time)) + '</span><br>' +
-        '<span class="sub">' + (mode === 'drift' ? 'TIME ' + fmt(time) : 'ドリフト ' + score.toLocaleString('ja-JP') + ' 点') + '</span>' +
-        condNote() + replayRow();
-      goBtn.textContent = 'もういちど';
-      veil.classList.remove('off');
-      countEl.classList.add('off');
-      return;
-    }
     if (window.SCOREBOARD) SCOREBOARD.over(boardKey(), mode === 'drift' ? score : time);
     var dNew = false;
     if (mode === 'drift' && score > driftBest()) {
       dNew = true;
-      try { localStorage.setItem('wadachi.drift.' + courseIdx, String(score)); } catch(e){}
+      try { localStorage.setItem('wadachi.drift.' + SL(), String(score)); } catch(e){}
     }
     var isNew = (best === 0 || time < best);
     if (isNew) { best = time; saveBest(); }
     // 手本がまだ無ければ、ベスト更新でなくてもこの1本を手本にする。
     // そうしないと、すでにベストを持っている人には永久にゴーストが出ない。
-    if (isNew || !ghosts[courseIdx]) { saveGhost(time); ghost = ghosts[courseIdx]; }
+    if (isNew || !ghosts[SL()]) { saveGhost(time); ghost = ghosts[SL()]; }
     sendGhost(time);
     if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(isNew); }
     veilTitle.textContent = 'GOAL';
@@ -1735,12 +1736,12 @@
       veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
         '<span class="big">' + score.toLocaleString('ja-JP') + '</span><br>' +
         '<span class="sub">' + (dNew ? 'NEW BEST' : 'BEST ' + driftBest().toLocaleString('ja-JP')) + '</span><br>' +
-        'タイム ' + fmt(time) + (isNew ? '（ベスト更新）' : '') + replayRow();
+        'タイム ' + fmt(time) + (isNew ? '（ベスト更新）' : '') + condNote() + replayRow();
     } else {
       veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
         '<span class="big">' + fmt(time) + '</span><br>' +
         '<span class="sub">' + (isNew ? 'NEW BEST' : 'BEST ' + fmt(best)) + '</span><br>' +
-        'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + replayRow();
+        'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + condNote() + replayRow();
     }
     goBtn.textContent = 'もういちど';
     veil.classList.remove('off');
@@ -1754,9 +1755,9 @@
   function setCourse(i){
     courseIdx = i;
     buildTrack();
-    best = bests[courseIdx];
-    ghost = ghosts[courseIdx];
-    if (!topG[courseIdx]) fetchTop(courseIdx);
+    best = bests[SL()] || 0;
+    ghost = ghosts[SL()];
+    if (!topG[gameKey()]) fetchTop();
     var btns = tabsEl.getElementsByTagName('button');
     for (var k=0;k<btns.length;k++){
       var isS = btns[k].getAttribute('data-c') === 's';
@@ -1887,6 +1888,7 @@
     if (b && b.getAttribute && b.getAttribute('data-tune')) {
       if (TUNES[b.getAttribute('data-tune')]) tune = b.getAttribute('data-tune');
       try { localStorage.setItem('wadachi.tune', tune); } catch(e3){}
+      condChanged();
       showStory(); return;
     }
     if (b && b.getAttribute && b.getAttribute('data-dir')) { setCourse(courseIdx % 3 + (b.getAttribute('data-dir') === '1' ? 3 : 0)); return; }
@@ -1941,6 +1943,7 @@
     if (st === 'play' || st === 'count') return;          // 走っている途中では変えない
     setWeather(weather === 'clear' ? 'rain' : weather === 'rain' ? 'fog' : 'clear');
     syncWx();
+    condChanged();
     if (st === 'title') showTitle();
   }
   if (wxBtn) wxBtn.addEventListener('click', function(){ cycleWx(); wxBtn.blur(); });
@@ -2475,12 +2478,13 @@
     var tail = '　（画面下の GHOST／G キーで 切→自己→1位）';
     if (ghostMode === 0) return 'ゴースト：切' + tail;
     if (ghostMode === 2) {
-      var t = topG[courseIdx];
+      var t = topG[gameKey()];
       if (!t) return 'ゴースト：1位と勝負 — まだ誰も記録を出していません' + tail;
       return 'ゴースト：1位と勝負　' + t.name + '　' + fmt(t.score) + tail;
     }
-    if (!ghosts[courseIdx]) return 'ゴースト：自己ベスト — まだ記録なし（1本 完走すると記録されます）' + tail;
-    return 'ゴースト：自己ベスト　' + fmt(ghostT[courseIdx]) + tail;
+    var sl = SL();
+    if (!ghosts[sl]) return 'ゴースト：自己ベスト — まだ記録なし（1本 完走すると記録されます）' + tail;
+    return 'ゴースト：自己ベスト　' + fmt(ghostT[sl]) + tail;
   }
 
   // コースの断面図。左下に小さく出し、いまの位置に点を打つ。
