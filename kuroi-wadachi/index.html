@@ -221,6 +221,13 @@
   .veil .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
   .veil .chip i{display:inline-block;width:10px;height:7px;border:1px solid rgba(232,228,216,.5)}
   .veil .endbtn{margin-top:4px;font:inherit;font-size:12.5px;line-height:1.2;padding:5px 10px;cursor:pointer;color:var(--amber-hi);background:transparent;border:1px solid rgba(255,194,122,.5);border-radius:2px}
+  .veil .pal{display:inline-flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:16em}
+  .veil .sw{
+    width:22px;height:22px;padding:0;cursor:pointer;border-radius:3px;
+    border:1px solid rgba(232,228,216,.35);-webkit-tap-highlight-color:transparent;
+  }
+  .veil .sw.on{outline:2px solid var(--text);outline-offset:2px}
+  .veil .sw:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
   .veil .narr.end{margin-top:6px;color:var(--amber-hi);letter-spacing:.12em}
   .veil .sub{font-family:'Oxanium',monospace;font-size:11px;letter-spacing:.18em;color:var(--cool)}
   .go{
@@ -1317,6 +1324,37 @@
   var rivAt = [], myAt = [];             // コース上の各点を通ったタイム（差の表示用）
   var rivWheels = null, bumpT = 0;
   function CH(){ return CHAPTERS[chap]; }
+
+  // 車の色（物語を全部勝ち抜くと選べる）。はじめの橙と、勝ち抜いた10人の車の色。
+  var MYCOL0 = '#F0873A';
+  function palette(){
+    var a = [{ who:'はじめの色', col: MYCOL0 }];
+    for (var i = 0; i < CHAPTERS.length; i++) a.push({ who: CHAPTERS[i].who, col: CHAPTERS[i].col });
+    return a;
+  }
+  function setMyCol(col, save){
+    var ok = false, pl = palette();
+    for (var i = 0; i < pl.length; i++) if (pl[i].col === col) ok = true;
+    COL.body = ok ? col : MYCOL0;
+    if (save) { try { localStorage.setItem('wadachi.color', COL.body); } catch(e){} }
+  }
+  function loadMyCol(){
+    var v = null;
+    try { v = localStorage.getItem('wadachi.color'); } catch(e){}
+    // 選べるのは勝ち抜いた後だけ（保存が残っていても、条件を満たさなければ橙）
+    setMyCol(cleared >= CHAPTERS.length && v ? v : MYCOL0, false);
+  }
+  function colorRow(){
+    if (cleared < CHAPTERS.length) return '';
+    var pl = palette(), h = '', cur = '';
+    for (var i = 0; i < pl.length; i++){
+      var on = pl[i].col === COL.body;
+      if (on) cur = pl[i].who;
+      h += '<button type="button" class="sw' + (on ? ' on' : '') + '" data-col="' + pl[i].col + '" title="' + pl[i].who +
+           '" aria-label="車の色：' + pl[i].who + '" aria-pressed="' + on + '" style="background:' + pl[i].col + '"></button>';
+    }
+    return '<br><span class="gh">車の色（' + cur + '）</span><br><span class="pal">' + h + '</span>';
+  }
   function loadStory(){
     try {
       cleared = Math.max(0, Math.min(CHAPTERS.length, parseInt(localStorage.getItem('wadachi.story'), 10) || 0));
@@ -1623,7 +1661,8 @@
       (c.boss ? '<span class="narr">' + c.pre + '</span>' : '<span class="line">「' + c.pre + '」</span>') + '<br>' +
       '<span class="gh">並んでスタート。相手より先にゴールすれば勝ち。車はぶつかる。</span>' +
       (cleared > chap ? '<br><span class="gh">勝ち抜き済み</span>' : '') +
-      (cleared >= CHAPTERS.length ? '<br><button type="button" class="nav endbtn" data-end="1">エンディングを見る</button>' : '');
+      (cleared >= CHAPTERS.length ? '<br><button type="button" class="nav endbtn" data-end="1">エンディングを見る</button>' : '') +
+      colorRow();
     goBtn.textContent = 'バトル開始';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1691,7 +1730,8 @@
     h += '<span class="fade" style="animation-delay:' + d.toFixed(1) + 's"><span class="gh">勝ち抜いた相手</span><br>' +
          '<span class="chips">' + chips + '</span></span><br>';
     d += 1.4;
-    h += '<span class="narr end fade" style="animation-delay:' + d.toFixed(1) + 's">黒い轍　― 完 ―<br>遊んでくれて、ありがとう。</span>';
+    h += '<span class="narr end fade" style="animation-delay:' + d.toFixed(1) + 's">黒い轍　― 完 ―<br>遊んでくれて、ありがとう。</span>' +
+         '<br><span class="gh fade" style="animation-delay:' + (d + 1.2).toFixed(1) + 's">車の色を選べるようになりました（物語の画面から）</span>';
     veilBody.innerHTML = h;
     goBtn.textContent = 'おわり';
     veil.classList.remove('off');
@@ -1699,6 +1739,11 @@
   }
   veilBody.addEventListener('click', function(e){
     var b = e.target;
+    if (b && b.getAttribute && b.getAttribute('data-col')) {
+      setMyCol(b.getAttribute('data-col'), true);
+      showStory();
+      return;
+    }
     if (b && b.getAttribute && b.getAttribute('data-end')) { showEnding(); return; }
     if (!b || !b.getAttribute || !b.getAttribute('data-nav') || b.disabled) return;
     var n = chap + parseInt(b.getAttribute('data-nav'), 10);
@@ -2360,6 +2405,10 @@
     ctx.globalAlpha = 1;
 
     drawCarNew(ctx, COL, steerV, sliding, lastSlip, blink, false);
+    if (COL.body === '#3A3A42' && !blink) {
+      ctx.strokeStyle = 'rgba(200,205,220,0.35)'; ctx.lineWidth = 1.2;
+      bodyPath(ctx, 0, 0); ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -2611,6 +2660,7 @@ function shade(hex, k){
     wiped = resetIfOldRules();
     loadBest();
     loadStory();
+    loadMyCol();
     syncGh();
     if (saved && saved.best && (!best || saved.best < best)) { best = saved.best; saveBest(); }
     layout();
