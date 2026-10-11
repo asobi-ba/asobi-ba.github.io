@@ -1293,9 +1293,11 @@
     if (h > availH) { h = availH; w = h * W / H; }
     if (!(w > 40)) { w = 280; h = w * H / W; }
     w = Math.round(w); h = Math.round(h);
-    if (w === lastW && h === lastH) return;
+    // 運転席の視点は塗る量が多いので、細かさを少し落として軽くする（2倍 → 1.5倍まで）
+    var want = Math.min(window.devicePixelRatio || 1, view === 'cab' ? 1.5 : 2);
+    if (w === lastW && h === lastH && want === dpr) return;
     lastW = w; lastH = h;
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    dpr = want;
     cv.style.width = w + 'px'; cv.style.height = h + 'px';
     cv.width  = Math.round(w * dpr);
     cv.height = Math.round(h * dpr);
@@ -1783,6 +1785,7 @@
     view = view === 'cab' ? 'top' : 'cab';
     try { localStorage.setItem('wadachi.view', view); } catch(e){}
     syncView();
+    layout();
   }
   if (vwBtn) vwBtn.addEventListener('click', function(){ toggleView(); vwBtn.blur(); });
 
@@ -2446,29 +2449,51 @@
     var Z = dx*cam.fx + dy*cam.fy, X = dx*cam.rx + dy*cam.ry;
     return { X:X, Y: dz*cam.cp - Z*cam.sp, Z: Z*cam.cp + dz*cam.sp };
   }
-  // 手前で切れる多角形を、見える分だけにして画面へ
-  function polyC(vp, pts, fill, seam){
-    var out = [], i, a, b;
+  // 手前で切れる多角形を、見える分だけにして画面の座標へ（[x0,y0,x1,y1,...]。見えなければ null）
+  function projC(vp, pts){
+    var out = [], i, a, b, sg = vp.flip ? -1 : 1;
     for (i = 0; i < pts.length; i++){
       a = pts[i]; b = pts[(i+1) % pts.length];
       var ain = a.Z >= CAB_NEAR, bin = b.Z >= CAB_NEAR;
-      if (ain) out.push(a);
+      if (ain) out.push(vp.cx + sg*a.X*vp.F/a.Z, vp.hor - a.Y*vp.F/a.Z);
       if (ain !== bin){
         var t = (CAB_NEAR - a.Z) / (b.Z - a.Z);
-        out.push({ X:a.X + (b.X-a.X)*t, Y:a.Y + (b.Y-a.Y)*t, Z:CAB_NEAR });
+        var X = a.X + (b.X-a.X)*t, Y = a.Y + (b.Y-a.Y)*t;
+        out.push(vp.cx + sg*X*vp.F/CAB_NEAR, vp.hor - Y*vp.F/CAB_NEAR);
       }
     }
-    if (out.length < 3) return;
+    return out.length >= 6 ? out : null;
+  }
+  function pathOf(sp){
+    ctx.moveTo(sp[0], sp[1]);
+    for (var i = 2; i < sp.length; i += 2) ctx.lineTo(sp[i], sp[i+1]);
+    ctx.closePath();
+  }
+  function polyC(vp, pts, fill, seam){
+    var sp = projC(vp, pts);
+    if (!sp) return;
     ctx.fillStyle = fill;
-    ctx.beginPath();
-    for (i = 0; i < out.length; i++){
-      var sx = vp.cx + (vp.flip ? -1 : 1) * out[i].X * vp.F / out[i].Z;
-      var sy = vp.hor - out[i].Y * vp.F / out[i].Z;
-      if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy);
-    }
-    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); pathOf(sp); ctx.fill();
     // 区間どうしの継ぎ目に細い隙間が見えるので、同じ色で縁をなぞって埋める
     if (seam) { ctx.strokeStyle = fill; ctx.lineWidth = 0.9; ctx.stroke(); }
+  }
+  // 同じ色の多角形をためておき、色ごとに1回で塗る（塗る回数を減らして軽くする）
+  function batch(vp){ return { vp: vp, keys: [], map: {} }; }
+  function bAdd(B, pts, fill){
+    var sp = projC(B.vp, pts);
+    if (!sp) return;
+    var a = B.map[fill];
+    if (!a) { a = B.map[fill] = []; B.keys.push(fill); }
+    a.push(sp);
+  }
+  function bFlush(B, seam){
+    for (var k = 0; k < B.keys.length; k++){
+      var key = B.keys[k], list = B.map[key];
+      ctx.beginPath();
+      for (var i = 0; i < list.length; i++) pathOf(list[i]);
+      ctx.fillStyle = key; ctx.fill();
+      if (seam) { ctx.strokeStyle = key; ctx.lineWidth = 0.9; ctx.stroke(); }
+    }
   }
   function makeCam(x, y, z, yaw, pitch){
     return { x:x, y:y, z:z, fx:Math.sin(yaw), fy:-Math.cos(yaw), rx:Math.cos(yaw), ry:Math.sin(yaw),
@@ -2625,7 +2650,7 @@
       if (r) { r.col = colOf(CAR3.F[k][1], r.li); list.push(r); }
     }
     list.sort(function(a, b){ return b.z - a.z; });
-    for (k = 0; k < list.length; k++) polyC(vp, list[k].pts, list[k].col, alpha >= 1);
+    for (k = 0; k < list.length; k++) polyC(vp, list[k].pts, list[k].col, false);
     // 飾り（灯火・ホイール）は車体のあと。奥行きで並べると、貼りついている面に負けて消えることがある
     for (k = 0; k < CAR3.D.length; k++){
       r = prep(CAR3.D[k]);
@@ -2653,7 +2678,7 @@
     ctx.lineTo(vp.x + vp.w, hz); ctx.closePath(); ctx.fill();
 
     // 道：近くの点を3次元に起こし、遠い区間から順に塗る
-    var i0 = Math.max(0, idx - 90), i1 = Math.min(TRACK.length - 1, idx + 170);
+    var i0 = Math.max(0, idx - (vp.back || 90)), i1 = Math.min(TRACK.length - 1, idx + (vp.ahead || 170));
     var C = [], N = [];
     for (i = i0; i <= i1; i++){
       var t = TRACK[i];
@@ -2664,6 +2689,12 @@
       var a = C[j], n = N[j], up = dz || 0;
       return { X:a.X + n.X*o, Y:a.Y + n.Y*o + up*cam.cp, Z:a.Z + n.Z*o + up*cam.sp };
     }
+    // 区間の先の端。継ぎ目に細い隙間が出ないよう、次の区間へ少しだけ食い込ませる
+    // （前は縁を同じ色でなぞって埋めていたが、それがいちばん重かった）
+    function offN(j, o, dz){
+      var p = off(j+1, o, dz), q = off(j, o, dz);
+      return { X:p.X + (p.X-q.X)*0.12, Y:p.Y + (p.Y-q.Y)*0.12, Z:p.Z + (p.Z-q.Z)*0.12 };
+    }
     var segs = [];
     for (i = 0; i < C.length - 1; i++){
       if (C[i].Z < -80 && C[i+1].Z < -80) continue;     // 完全に背中側
@@ -2671,7 +2702,7 @@
       var lim0 = Math.max(0, C[i].Z) * vp.wide + 160, lim1 = Math.max(0, C[i+1].Z) * vp.wide + 160;
       if ((C[i].X > lim0 && C[i+1].X > lim1) || (C[i].X < -lim0 && C[i+1].X < -lim1)) continue;
       var dep = (C[i].Z + C[i+1].Z) / 2;
-      if (dep > 2600) continue;
+      if (dep > 1400) continue;       // ここより遠いと霧で地面と同じ色になり、見えない
       segs.push([dep, i]);
     }
     segs.sort(function(a, b){ return b[0] - a[0]; });
@@ -2680,45 +2711,64 @@
     // 区間ごとに奥から塗ると、ヘアピンで隣り合う道の路肩が手前の路面に被さってしまう。
     function each(fn){
       for (var q = 0; q < segs.length; q++){
-        j = segs[q][1]; ft = Math.max(0, segs[q][0]) / 1300; ti2 = i0 + j;
+        j = segs[q][1]; ft = Math.round(Math.max(0, segs[q][0]) / 1300 * 24) / 24; ti2 = i0 + j;   // 色の数を減らしてまとめ塗りを効かせる
         fn();
       }
     }
-    each(function(){   // 路肩（土）
-      polyC(vp, [off(j,-WO), off(j+1,-WO), off(j+1,WO), off(j,WO)], fogC(RGB_WALL, ft), true);
+    var B = batch(vp);
+    // 下の層を道幅いっぱいに塗ると、上の層と同じ所を何度も塗って重い。はみ出す帯の部分だけ塗る
+    each(function(){   // 路肩（土）：白線の外側だけ
+      var c = fogC(RGB_WALL, ft);
+      bAdd(B, [off(j,-WO), offN(j,-WO), offN(j,-HALF), off(j,-HALF)], c);
+      bAdd(B, [off(j,HALF), offN(j,HALF), offN(j,WO), off(j,WO)], c);
     });
-    each(function(){   // 白線
-      polyC(vp, [off(j,-EO), off(j+1,-EO), off(j+1,EO), off(j,EO)], fogC(RGB_EDGE, ft), true);
+    bFlush(B, false); B = batch(vp);
+    each(function(){   // 白線：路面の外側の細い帯だけ
+      var c = fogC(RGB_EDGE, ft);
+      bAdd(B, [off(j,-EO), offN(j,-EO), offN(j,-HALF+0.5), off(j,-HALF+0.5)], c);
+      bAdd(B, [off(j,HALF-0.5), offN(j,HALF-0.5), offN(j,EO), off(j,EO)], c);
     });
+    bFlush(B, false); B = batch(vp);
+    var B2 = batch(vp);
     each(function(){   // 路面（上から見たときの坂の色づけと同じく、下りは水色・上りは橙を薄く混ぜる）
       var gg = TRACK[ti2].g, rr = RGB_ROAD;
-      var tint = Math.min(0.13, Math.abs(gg) * 0.75);
+      var tint = Math.round(Math.min(0.13, Math.abs(gg) * 0.75) * 50) / 50;
       var rc = gg >= 0 ? [rr[0] + (95-rr[0])*tint, rr[1] + (211-rr[1])*tint, rr[2] + (224-rr[2])*tint]
                        : [rr[0] + (240-rr[0])*tint, rr[1] + (135-rr[1])*tint, rr[2] + (58-rr[2])*tint];
-      polyC(vp, [off(j,-HALF), off(j+1,-HALF), off(j+1,HALF), off(j,HALF)], fogC(rc, ft), true);
+      bAdd(B, [off(j,-HALF+0.5), offN(j,-HALF+0.5), offN(j,HALF-0.5), off(j,HALF-0.5)], fogC(rc, ft));
       // 中央の破線（コース上の距離で決めるので、走っても模様がずれない）
       if (Math.round(TRACK[ti2].d / STEP) % 4 < 2)
-        polyC(vp, [off(j,-1), off(j+1,-1), off(j+1,1), off(j,1)], fogC(RGB_CEN, ft));
+        bAdd(B2, [off(j,-1), off(j+1,-1), off(j+1,1), off(j,1)], fogC(RGB_CEN, ft));
       // スタートとゴールの線
       if (ti2 === 0 || ti2 === TRACK.length - 2)
-        polyC(vp, [off(j,-HALF), off(j+1,-HALF), off(j+1,HALF), off(j,HALF)], ti2 === 0 ? 'rgba(232,228,216,0.75)' : 'rgba(95,211,224,0.8)');
+        bAdd(B2, [off(j,-HALF), off(j+1,-HALF), off(j+1,HALF), off(j,HALF)], ti2 === 0 ? 'rgba(232,228,216,0.75)' : 'rgba(95,211,224,0.8)');
     });
-    each(function(){   // ガードレール（壁の位置。低い板）は立っているので最後に、奥から
-      polyC(vp, [off(j,-WO), off(j+1,-WO), off(j+1,-WO,8), off(j,-WO,8)], fogC(RGB_RAIL, ft + 0.2), true);
-      polyC(vp, [off(j,WO), off(j+1,WO), off(j+1,WO,8), off(j,WO,8)], fogC(RGB_RAIL, ft + 0.2), true);
+    bFlush(B, false); bFlush(B2, false); B = batch(vp);
+    each(function(){   // ガードレール（壁の位置。低い板）は立っているので最後に
+      var rc2 = fogC(RGB_RAIL, Math.min(1, ft + 0.2));
+      bAdd(B, [off(j,-WO), offN(j,-WO), offN(j,-WO,8), off(j,-WO,8)], rc2);
+      bAdd(B, [off(j,WO), offN(j,WO), offN(j,WO,8), off(j,WO,8)], rc2);
     });
+    bFlush(B, false);
 
     // 轍（路面に黒く）。線の太さで描くと手前で太りすぎるので、路面に貼った細い帯にする
+    var BM = batch(vp);
+    // 轍は多いと何百本にもなるので、見える範囲のものだけ。遠いものは1組おきに間引く
     for (k = 0; vp.marks && k < marks.length; k++){
       var mk = marks[k];
-      if (Math.abs(mk.x1 - cam.x) > 900 || Math.abs(mk.y1 - cam.y) > 900) continue;
+      var mdx = mk.x1 - cam.x, mdy = mk.y1 - cam.y;
+      var mfw = mdx*cam.fx + mdy*cam.fy;
+      if (mfw < 4 || mfw > 560) continue;                                     // 背中側・遠すぎ
+      if (Math.abs(mdx*cam.rx + mdy*cam.ry) > mfw * vp.wide + 30) continue;   // 見える角度の外
+      if (mfw > 240 && (k & 2)) continue;
       var hh = (mk.h !== undefined ? mk.h : 0) + 0.4;
       var ddx = mk.x2 - mk.x1, ddy = mk.y2 - mk.y1, dl = Math.hypot(ddx, ddy);
       if (dl < 0.01) continue;
       var px = -ddy / dl * 3, py = ddx / dl * 3;
-      polyC(vp, [toC(cam, mk.x1 - px, mk.y1 - py, hh), toC(cam, mk.x2 - px, mk.y2 - py, hh),
-                 toC(cam, mk.x2 + px, mk.y2 + py, hh), toC(cam, mk.x1 + px, mk.y1 + py, hh)], 'rgba(0,0,0,0.42)');
+      bAdd(BM, [toC(cam, mk.x1 - px, mk.y1 - py, hh), toC(cam, mk.x2 - px, mk.y2 - py, hh),
+                toC(cam, mk.x2 + px, mk.y2 + py, hh), toC(cam, mk.x1 + px, mk.y1 + py, hh)], 'rgba(0,0,0,0.42)');
     }
+    bFlush(BM, false);
 
     // 車（遠いものから）
     var cars = [];
@@ -2760,7 +2810,7 @@
     ctx.save();
     ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip();
     var Fm = (mw/2) / Math.tan(0.55);
-    scene(makeCam(car.x, car.y, ez + 2, car.ang + Math.PI, -0.05), { x:mx, y:my, w:mw, h:mh, cx:W/2, hor:my + mh*0.55, F:Fm, flip:true, wide:(mw/2)/Fm, marks:false });
+    scene(makeCam(car.x, car.y, ez + 2, car.ang + Math.PI, -0.05), { x:mx, y:my, w:mw, h:mh, cx:W/2, hor:my + mh*0.55, F:Fm, flip:true, wide:(mw/2)/Fm, marks:false, back:80, ahead:10 });
     ctx.restore();
     ctx.strokeStyle = '#1A1C22'; ctx.lineWidth = 3;
     ctx.strokeRect(mx - 1, my - 1, mw + 2, mh + 2);
