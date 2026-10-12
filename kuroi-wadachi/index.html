@@ -2813,7 +2813,8 @@
     // ドリフト中は、前輪を「進んでいく向き」へ向ける（カウンターを当てている姿）。
     // 記録にはハンドルの操作が無いので、車体の向きと進む向きのずれから決める
     if (slip > 0.12 && sp > 50) {
-      steerV = Math.max(-1, Math.min(1, Math.atan2(lat, Math.max(1, fwd)) / 0.55));
+      // ずれの角度そのままを切る（最大 約46度で止まる）
+      steerV = Math.max(-1, Math.min(1, Math.atan2(lat, Math.max(1, fwd)) / WLOCK));
       car.steerV = steerV;
     }
     if (dt > 0) {
@@ -2846,7 +2847,7 @@
       // 相手の車も、滑っている間は前輪を進む向きへ
       var rlat = riv.lat, rfwd = riv.fwd, rsp = Math.hypot(riv.vx, riv.vy);
       riv.steerV = (rsp > 50 && Math.abs(Math.atan2(rlat, Math.max(18, rfwd))) > 0.12)
-        ? Math.max(-1, Math.min(1, Math.atan2(rlat, Math.max(1, rfwd)) / 0.55)) : 0;
+        ? Math.max(-1, Math.min(1, Math.atan2(rlat, Math.max(1, rfwd)) / WLOCK)) : 0;
       riv.hitT = 0;
       // 相手の轍も残す
       if (dt > 0) {
@@ -3163,8 +3164,8 @@
     var fogT = Math.min(0.85, d / (FOG.dist * 1.15)), rgb = rgbOf(hex);
     var fx = Math.sin(c.ang), fy = -Math.cos(c.ang), rx = Math.cos(c.ang), ry = Math.sin(c.ang);
     // 上から見た絵の座標(x 右, y 後ろ) → 世界
-    // 前輪の切れ角（上から見た絵と同じく ハンドル×0.55）。右へ切る＝時計回り
-    var wa = Math.max(-1, Math.min(1, c.steerV || 0)) * 0.55, wcs = Math.cos(wa), wsn = Math.sin(wa);
+    // 前輪の切れ角（上から見た絵と同じく ハンドル×WLOCK）。右へ切る＝時計回り
+    var wa = Math.max(-1, Math.min(1, c.steerV || 0)) * WLOCK, wcs = Math.cos(wa), wsn = Math.sin(wa);
     function Wd(p, piv){
       if (piv) {
         var dx = p[0] - piv[0], dy = p[1] - piv[1];
@@ -3588,10 +3589,12 @@
 
 // 真上から見たドリフト車。全長62・全幅31。前は -Y 方向。
 // タイヤは張り出した泥よけの下に収め、端だけ見せる（実車の見え方）。
+// 前輪の、絵の上での最大の切れ角（ラジアン。0.8 ≒ 46度。ドリフトのカウンターが見えるよう大きめ）
+var WLOCK = 0.8;
 function drawCarNew(ctx, COL, steerV, sliding, slip, blink, brakeOn){
   if (blink) return;
   var st = Math.max(-1, Math.min(1, steerV));
-  var sa = st * 0.55;
+  var sa = st * WLOCK;
 
   // ---- タイヤ（車体の下。泥よけからわずかに覗く） ----
   function wheel(x, y, rot, wide, long, smear){
