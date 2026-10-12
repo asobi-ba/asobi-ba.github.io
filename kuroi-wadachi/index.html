@@ -3093,7 +3093,10 @@
     for (i = 0; i < n; i++){
       var j = (i+1) % n, p = ring[i], q = ring[j], pi = inset(i, 1.0), qi = inset(j, 1.0),
           pt = inset(i, 2.4), qt = inset(j, 2.4);
-      F.push([[[p[0],p[1],ZB], [q[0],q[1],ZB], [q[0],q[1],ZS], [p[0],p[1],ZS]], 'body']);                 // 下の帯
+      // 下の帯。タイヤの所は切り欠く（タイヤハウス）。前輪を切ったとき、タイヤが車体の板を突き抜けて見えないように
+      var my = (p[1] + q[1]) / 2;
+      var arch = Math.abs(p[0]) > 10 && (Math.abs(my + 18.5) < 7.0 || Math.abs(my - 18.5) < 7.2);
+      if (!arch) F.push([[[p[0],p[1],ZB], [q[0],q[1],ZB], [q[0],q[1],ZS], [p[0],p[1],ZS]], 'body']);
       F.push([[[p[0],p[1],ZS], [q[0],q[1],ZS], [qi[0],qi[1],(ZS+zt(q[1]))/2+0.5], [pi[0],pi[1],(ZS+zt(p[1]))/2+0.5]], 'body']);  // 肩
       F.push([[[pi[0],pi[1],(ZS+zt(p[1]))/2+0.5], [qi[0],qi[1],(ZS+zt(q[1]))/2+0.5], [qt[0],qt[1],zt(q[1])], [pt[0],pt[1],zt(p[1])]], 'body']);   // 上へ回り込む
     }
@@ -3140,9 +3143,14 @@
         hubc.push([xout + (xout > 0 ? 0.25 : -0.25), cy + (ring2[k][0]-cy)*0.22, R + (ring2[k][1]-R)*0.22]);
       }
       F.push([cap, 'tire', piv]);
-      D.push([hub, 'hub', piv]);
-      D.push([hubc, 'hubc', piv]);
+      F.push([hub, 'hub', piv]);
+      F.push([hubc, 'hubc', piv]);
     }
+    function well(cy, s){
+      F.push([[[s*7.4, cy - 7.2, 0.6], [s*7.4, cy + 7.2, 0.6], [s*7.4, cy + 7.2, ZS + 0.6], [s*7.4, cy - 7.2, ZS + 0.6]], 'well']);
+      F.push([[[s*7.4, cy - 7.2, ZS + 0.6], [s*7.4, cy + 7.2, ZS + 0.6], [s*13.2, cy + 7.2, ZS + 0.6], [s*13.2, cy - 7.2, ZS + 0.6]], 'well']);
+    }
+    well(-18.5, -1); well(-18.5, 1); well(18.5, -1); well(18.5, 1);
     tire(0, -18.5, -8.0, -14.0, 5.0); tire(0, -18.5, 8.0, 14.0, 5.0);   // 泥よけの内側に収まる幅
     tire(0,  18.5, -7.8, -14.4, 5.2); tire(0,  18.5, 7.8, 14.4, 5.2);
     // 灯火（前面・後面に少し浮かせて貼る。必ず車体のあとに描く）
@@ -3199,6 +3207,7 @@
       if (kind === 'tire') return fogC([12 + 10*li, 13 + 10*li, 16 + 10*li], fogT);
       if (kind === 'dark') return fogC([20 + 12*li, 22 + 12*li, 28 + 12*li], fogT);
       if (kind === 'hub') return fogC([96, 100, 112], fogT);
+      if (kind === 'well') return fogC([10, 11, 14], fogT);
       if (kind === 'hubc') return fogC([30, 32, 38], fogT);
       if (kind === 'lamp') return '#FFE9BC';
       if (kind === 'glow') return 'rgba(255,59,48,0.28)';
@@ -3210,12 +3219,22 @@
     for (var s = 0; s < CAR3.sh.length; s++){ var w2 = Wd(CAR3.sh[s]); sp.push(toC(cam, w2[0], w2[1], w2[2])); }
     polyC(vp, sp, 'rgba(0,0,0,0.42)');
     // 車体：遠い面から
-    var list = [], k, r;
+    // 奥行きだけで並べると、切ったタイヤと車体の板が前後を取り合ってちらつくので、
+    // 「タイヤハウスの奥 → タイヤとホイール → 車体」の順に、組ごとに描く（車体はタイヤの上に被さる）
+    var lw = [], lt = [], list = [], k, r, kd;
     for (k = 0; k < CAR3.F.length; k++){
+      kd = CAR3.F[k][1];
       r = prep(CAR3.F[k]);
-      if (r) { r.col = colOf(CAR3.F[k][1], r.li); list.push(r); }
+      if (!r) continue;
+      r.col = colOf(kd, r.li);
+      if (kd === 'well') lw.push(r); else if (kd === 'tire' || kd === 'hub' || kd === 'hubc') { r.hub = kd !== 'tire'; lt.push(r); } else list.push(r);
     }
-    list.sort(function(a, b){ return b.z - a.z; });
+    var far = function(a, b){ return b.z - a.z; };
+    lw.sort(far); list.sort(far);
+    // タイヤは奥から、ただしホイールは同じタイヤの面より後に
+    lt.sort(function(a, b){ return (a.hub - b.hub) || (b.z - a.z); });
+    for (k = 0; k < lw.length; k++) polyC(vp, lw[k].pts, lw[k].col, false);
+    for (k = 0; k < lt.length; k++) polyC(vp, lt[k].pts, lt[k].col, alpha >= 1 && !lt[k].hub);
     // 面どうしの細い隙間が線になって見えるので、不透明のときだけ縁を同じ色でなぞる（車1台なので軽い）
     for (k = 0; k < list.length; k++) polyC(vp, list[k].pts, list[k].col, alpha >= 1);
     // 飾り（灯火・ホイール）は車体のあと。奥行きで並べると、貼りついている面に負けて消えることがある
