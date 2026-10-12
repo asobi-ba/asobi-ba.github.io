@@ -1301,8 +1301,48 @@
     }
     buildProfile();
     buildCheckpoints();
+    buildRoom();
   }
   buildTrack();
+
+  // 各点の左右に、ほかの部分の道（ヘアピンの折り返し先など）の中心がどれだけ離れているか。
+  // 近い所では、相手の車の走れる幅と、立体の地面の幅をこれで決める。コースを組むときに一度だけ
+  function buildRoom(){
+    var n = TRACK.length, i, j;
+    for (i = 0; i < n; i++){
+      var a = TRACK[i], mL = 1e12, mR = 1e12;
+      for (j = 0; j < n; j++){
+        if (Math.abs(i - j) < 40) continue;
+        var dx = TRACK[j].x - a.x, dy = TRACK[j].y - a.y, dd = dx*dx + dy*dy;
+        if (dd > 160000) continue;                 // 400 より遠い所は関係ない
+        if (dx*a.nx + dy*a.ny > 0) { if (dd < mR) mR = dd; } else { if (dd < mL) mL = dd; }
+      }
+      a.roomL = Math.min(400, Math.sqrt(mL)); a.roomR = Math.min(400, Math.sqrt(mR));
+    }
+    // 横へどこまで出ても、隣の道（中心から HALF+16 の内側）に入らないか。
+    // 隣の道は真横とは限らない（斜め）ので、横へ少しずつずらして実際に確かめる
+    var lim = HALF + 16, lim2 = lim * lim;
+    for (i = 0; i < n; i++){
+      var b = TRACK[i], near = [];
+      for (j = 0; j < n; j++){
+        if (Math.abs(i - j) < 40) continue;
+        var ex = TRACK[j].x - b.x, ey = TRACK[j].y - b.y;
+        if (ex*ex + ey*ey < 180*180) near.push(TRACK[j]);
+      }
+      for (var sd = -1; sd <= 1; sd += 2){
+        var clr = HALF + WALL;
+        for (var o = 0; o <= HALF + WALL; o += 2){
+          var qx = b.x + b.nx*o*sd, qy = b.y + b.ny*o*sd, hit = false;
+          for (var m = 0; m < near.length; m++){
+            var fx2 = near[m].x - qx, fy2 = near[m].y - qy;
+            if (fx2*fx2 + fy2*fy2 < lim2) { hit = true; break; }
+          }
+          if (hit) { clr = Math.max(0, o - 2); break; }
+        }
+        if (sd < 0) b.clrL = clr; else b.clrR = clr;
+      }
+    }
+  }
 
   // コース全体の高さの形。毎コマ作ると重いので、コースを組むときに一度だけ。
   var PROFILE = [];
@@ -1695,7 +1735,7 @@
       car.x = s0.x + s0.nx * R; car.y = s0.y + s0.ny * R;
       riv = { x: s0.x - s0.nx * R, y: s0.y - s0.ny * R, ang: s0.a, vx:0, vy:0,
               steerV:0, holdT:0, idx:0, hitT:0, stuckT:0, lat:0, fwd:0, onRoad:true, wall:false,
-              seen: -1, mySeen: -1, top: CH().top || 0, pow: CH().pow || 0,
+              seen: -1, mySeen: -1, top: CH().top || 0, pow: CH().pow || 0, tight: true,
               col: { body: CH().col, lampCore: '#FFE9BC' } };
       camX = s0.x - W/2; camY = s0.y - H/2;
     }
@@ -2258,11 +2298,15 @@
 
     // 壁
     c.wall = false;
-    if (off > WALL) {
+    // 壁の位置。相手の車は、ヘアピンで隣の道と重なる所では壁を手前にして、隣の道へはみ出さない
+    // （自分の車は持たない＝今までどおり WALL。順位表の記録の条件を変えないため）
+    var wallW = WALL;
+    if (c.tight) wallW = Math.max(4, Math.min(WALL, (offv > 0 ? sN.clrR : sN.clrL) - HALF));
+    if (off > wallW) {
       var sgn = offv > 0 ? 1 : -1;
       // 壁の内側へ少し戻す（ちょうどの位置に置くと張り付く）
-      c.x = sN.x + sN.nx * sgn * (HALF + WALL - 7);
-      c.y = sN.y + sN.ny * sgn * (HALF + WALL - 7);
+      c.x = sN.x + sN.nx * sgn * (HALF + wallW - 7);
+      c.y = sN.y + sN.ny * sgn * (HALF + wallW - 7);
       // 壁へ向かう成分だけ消す。前へ進む成分は残すので、壁ぞいに流れて復帰できる
       var vn = c.vx*sN.nx + c.vy*sN.ny;
       if (vn * sgn > 0) { c.vx -= sN.nx * vn; c.vy -= sN.ny * vn; }
@@ -2336,7 +2380,7 @@
     } else rivWheels = null;
 
     if (bumpT > 0) bumpT -= dt;
-    var hit = collide(car, r);
+    var hit = Math.abs(idx - r.idx) < 40 ? collide(car, r) : 0;
     if (hit > 25 && bumpT <= 0) {
       bumpT = 0.25;
       if (window.WADACHI_AUDIO) WADACHI_AUDIO.hitWall();
@@ -2987,6 +3031,7 @@
     return 'rgb(' + Math.round(FOG.r + (rgb[0]-FOG.r)*k) + ',' + Math.round(FOG.g + (rgb[1]-FOG.g)*k) + ',' + Math.round(FOG.b + (rgb[2]-FOG.b)*k) + ')';
   }
   function rgbOf(hex){ var n = parseInt(hex.slice(1), 16); return [(n>>16)&255, (n>>8)&255, n&255]; }
+  var RGB_GROUND = [30,38,31];   // 道の外の地面（夜の草地）
   var RGB_WET = [52,58,70];      // 雨で濡れた路面（少し明るく、青みがかる）
   var RGB_ROAD = [44,46,54], RGB_EDGE = [200,196,184], RGB_WALL = [58,46,38], RGB_RAIL = [88,86,84], RGB_CEN = [110,106,96];
 
@@ -3246,10 +3291,10 @@
   }
 
   // 前照灯の光：車の向きの前方へ、扇形に広がる帯を路面の高さに合わせて重ね塗りする
-  function lightCone(cam, vp, c){
+  // 光の帯を作って返す（描くのは景色の側で、奥行きの帯ごとに）
+  function lightCone(cam, c){
     var fx = Math.sin(c.ang), fy = -Math.cos(c.ang), rx = Math.cos(c.ang), ry = Math.sin(c.ang);
-    var from = Math.max(0, c.idx || 0), prev = null, s, k;
-    ctx.globalCompositeOperation = 'lighter';
+    var from = Math.max(0, c.idx || 0), prev = null, s, k, out = [];
     for (s = 10; s <= 370; s += 30){
       var px = c.x + fx*s, py = c.y + fy*s;
       // その地点にいちばん近いコースの点の高さ（車の位置から先を探す）
@@ -3262,13 +3307,13 @@
       var cur = [px - rx*w, py - ry*w, px + rx*w, py + ry*w, z];
       if (prev) {
         var a = 0.13 * (1 - s / 400);
-        polyC(vp, [toC(cam, prev[0], prev[1], prev[4]), toC(cam, prev[2], prev[3], prev[4]),
-                   toC(cam, cur[2], cur[3], cur[4]), toC(cam, cur[0], cur[1], cur[4])],
-              'rgba(255,224,170,' + a.toFixed(3) + ')');
+        var pts = [toC(cam, prev[0], prev[1], prev[4]), toC(cam, prev[2], prev[3], prev[4]),
+                   toC(cam, cur[2], cur[3], cur[4]), toC(cam, cur[0], cur[1], cur[4])];
+        out.push({ z: (pts[0].Z + pts[2].Z) / 2, pts: pts, col: 'rgba(255,224,170,' + a.toFixed(3) + ')' });
       }
       prev = cur;
     }
-    ctx.globalCompositeOperation = 'source-over';
+    return out;
   }
 
   // 雨の筋と、上からの視点の霧
@@ -3363,87 +3408,56 @@
     for (i = 0; i < C.length - 1; i++){
       if (C[i].Z < -80 && C[i+1].Z < -80) continue;     // 完全に背中側
       // 見える角度から大きく外れている区間も描かない（スマホで重くならないように）
-      var lim0 = Math.max(0, C[i].Z) * vp.wide + 160, lim1 = Math.max(0, C[i+1].Z) * vp.wide + 160;
+      var lim0 = Math.max(0, C[i].Z) * vp.wide + 420, lim1 = Math.max(0, C[i+1].Z) * vp.wide + 420;
       if ((C[i].X > lim0 && C[i+1].X > lim1) || (C[i].X < -lim0 && C[i+1].X < -lim1)) continue;
       var dep = (C[i].Z + C[i+1].Z) / 2;
       if (dep > FOG.dist * 1.08) continue;       // ここより遠いと霧で地面と同じ色になり、見えない
       segs.push([dep, i]);
     }
     segs.sort(function(a, b){ return b[0] - a[0]; });
-    var WO = HALF + WALL, EO = HALF + 2.5, j, ft, ti2;
-    // 地面に貼りつくもの（路肩→白線→路面）は、上から見た絵と同じく「種類ごと」に重ねる。
-    // 区間ごとに奥から塗ると、ヘアピンで隣り合う道の路肩が手前の路面に被さってしまう。
-    function each(fn){
-      for (var q = 0; q < segs.length; q++){
-        j = segs[q][1]; ft = Math.round(Math.max(0, segs[q][0]) / FOG.dist * 24) / 24; ti2 = i0 + j;   // 色の数を減らしてまとめ塗りを効かせる
-        fn();
-      }
-    }
-    var B = batch(vp);
-    // 下の層を道幅いっぱいに塗ると、上の層と同じ所を何度も塗って重い。はみ出す帯の部分だけ塗る
-    each(function(){   // 路肩（土）：白線の外側だけ
-      var c = fogC(RGB_WALL, ft);
-      bAdd(B, [off(j,-WO), offN(j,-WO), offN(j,-HALF), off(j,-HALF)], c);
-      bAdd(B, [off(j,HALF), offN(j,HALF), offN(j,WO), off(j,WO)], c);
-    });
-    bFlush(B, false); B = batch(vp);
-    each(function(){   // 白線：路面の外側の細い帯だけ
-      var c = fogC(RGB_EDGE, ft);
-      bAdd(B, [off(j,-EO), offN(j,-EO), offN(j,-HALF+0.5), off(j,-HALF+0.5)], c);
-      bAdd(B, [off(j,HALF-0.5), offN(j,HALF-0.5), offN(j,EO), off(j,EO)], c);
-    });
-    bFlush(B, false); B = batch(vp);
-    var B2 = batch(vp);
-    each(function(){   // 路面（上から見たときの坂の色づけと同じく、下りは水色・上りは橙を薄く混ぜる）
-      var gg = TRACK[ti2].g, rr = weather === 'rain' ? RGB_WET : RGB_ROAD;
-      var tint = Math.round(Math.min(0.13, Math.abs(gg) * 0.75) * 50) / 50;
-      var rc = gg >= 0 ? [rr[0] + (95-rr[0])*tint, rr[1] + (211-rr[1])*tint, rr[2] + (224-rr[2])*tint]
-                       : [rr[0] + (240-rr[0])*tint, rr[1] + (135-rr[1])*tint, rr[2] + (58-rr[2])*tint];
-      bAdd(B, [off(j,-HALF+0.5), offN(j,-HALF+0.5), offN(j,HALF-0.5), off(j,HALF-0.5)], fogC(rc, ft));
-      // 中央の破線（コース上の距離で決めるので、走っても模様がずれない）
-      if (Math.round(TRACK[ti2].d / STEP) % 4 < 2)
-        bAdd(B2, [off(j,-1), off(j+1,-1), off(j+1,1), off(j,1)], fogC(RGB_CEN, ft));
-      // スタートとゴールの線
-      if (ti2 === 0 || ti2 === TRACK.length - 2)
-        bAdd(B2, [off(j,-HALF), off(j+1,-HALF), off(j+1,HALF), off(j,HALF)], ti2 === 0 ? 'rgba(232,228,216,0.75)' : 'rgba(95,211,224,0.8)');
-    });
-    bFlush(B, false); bFlush(B2, false); B = batch(vp);
-    each(function(){   // ガードレール（壁の位置。低い板）は立っているので最後に
-      var rc2 = fogC(RGB_RAIL, Math.min(1, ft + 0.2));
-      bAdd(B, [off(j,-WO), offN(j,-WO), offN(j,-WO,8), off(j,-WO,8)], rc2);
-      bAdd(B, [off(j,WO), offN(j,WO), offN(j,WO,8), off(j,WO,8)], rc2);
-    });
-    bFlush(B, false);
 
-    // 轍（路面に黒く）。線の太さで描くと手前で太りすぎるので、路面に貼った細い帯にする
-    var BM = batch(vp);
-    // 轍は多いと何百本にもなるので、見える範囲のものだけ。遠いものは1組おきに間引く
+    // 奥行きの近い区間をひとまとめ（帯）にして、遠い帯から順に塗る。
+    // 手前の帯が奥の帯を上から覆うので、峠の頂上の向こうの道や車は、手前の地面に隠れる。
+    // 帯の中は「地面→路肩→白線→路面→轍・光→ガードレール」と種類ごとに重ねる
+    // （ヘアピンで隣り合う道の路肩が、手前の路面に被さらないように）。
+    var bands = [], cur = null;
+    for (k = 0; k < segs.length; k++){
+      if (!cur || cur.top - segs[k][0] > 70 || cur.s.length >= 14) { cur = { top: segs[k][0], low: segs[k][0], s: [], marks: [], lights: [] }; bands.push(cur); }
+      cur.s.push(segs[k]); cur.low = segs[k][0];
+    }
+    function bandOf(z){
+      for (var b = 0; b < bands.length; b++) if (z >= bands[b].low - 35) return bands[b];
+      return bands.length ? bands[bands.length - 1] : null;
+    }
+
+    // 轍：見える範囲のものだけ。どの帯に入るかを奥行きで決めておく
     for (k = 0; vp.marks && k < marks.length; k++){
       var mk = marks[k];
       var mdx = mk.x1 - cam.x, mdy = mk.y1 - cam.y;
       var mfw = mdx*cam.fx + mdy*cam.fy;
       if (mfw < 4 || mfw > 560) continue;                                     // 背中側・遠すぎ
       if (Math.abs(mdx*cam.rx + mdy*cam.ry) > mfw * vp.wide + 30) continue;   // 見える角度の外
-      if (mfw > 240 && (k & 2)) continue;
+      if (mfw > 240 && (k & 2)) continue;                                      // 遠いものは間引く
       var hh = (mk.h !== undefined ? mk.h : 0) + 0.4;
       var ddx = mk.x2 - mk.x1, ddy = mk.y2 - mk.y1, dl = Math.hypot(ddx, ddy);
       if (dl < 0.01) continue;
       var px = -ddy / dl * 3, py = ddx / dl * 3;
-      bAdd(BM, [toC(cam, mk.x1 - px, mk.y1 - py, hh), toC(cam, mk.x2 - px, mk.y2 - py, hh),
-                toC(cam, mk.x2 + px, mk.y2 + py, hh), toC(cam, mk.x1 + px, mk.y1 + py, hh)], 'rgba(0,0,0,0.42)');
+      var q4 = [toC(cam, mk.x1 - px, mk.y1 - py, hh), toC(cam, mk.x2 - px, mk.y2 - py, hh),
+                toC(cam, mk.x2 + px, mk.y2 + py, hh), toC(cam, mk.x1 + px, mk.y1 + py, hh)];
+      var bm = bandOf(q4[0].Z);
+      if (bm) bm.marks.push(q4);
     }
-    bFlush(BM, false);
-
-    // 前照灯が路面を照らす（自分の車と、物語の相手）
+    // 前照灯が路面を照らす光（自分の車と、物語の相手）。これも帯に振り分ける
     if (vp.marks) {                       // ルームミラーには描かない（後ろ向きなので見えず、重いだけ）
-      lightCone(cam, vp, car);
-      if (story && riv) lightCone(cam, vp, riv);
+      var Ls = lightCone(cam, car);
+      if (story && riv) Ls = Ls.concat(lightCone(cam, riv));
+      for (k = 0; k < Ls.length; k++){ var bl = bandOf(Ls[k].z); if (bl) bl.lights.push(Ls[k]); }
     }
 
-    // 車（遠いものから）
-    var cars = [];
-    if (story && riv) cars.push({ c: riv, col: riv.col.body, a: 1 });
-    if (vp.self) cars.push({ c: car, col: myCol(), a: 1 });   // 外からの視点では自分の車も
+    // 車と煙。奥行き（カメラから見た前後）で並べ、帯と帯のあいだに差し込んで描く
+    var items = [];
+    if (story && riv) items.push({ c: riv, col: riv.col.body, a: 1 });
+    if (vp.self) items.push({ c: car, col: myCol(), a: 1 });   // 外からの視点では自分の車も
     {
       var gc = ghostNow();
       if (gc){
@@ -3451,28 +3465,102 @@
         var gp = ghostPose(time);
         if (gp){
           var gi = Math.min(gc.arr.length/4 - 1, Math.floor(time / GH_DT));
-          cars.push({ c: { x:gp.x, y:gp.y, ang:gp.ang, idx: gc.arr[gi*4+3] }, col: gc.col.body, a: 0.38 });
+          items.push({ c: { x:gp.x, y:gp.y, ang:gp.ang, idx: gc.arr[gi*4+3] }, col: gc.col.body, a: 0.38 });
         }
       }
     }
-    for (k = 0; k < cars.length; k++) cars[k].d = Math.hypot(cars[k].c.x - cam.x, cars[k].c.y - cam.y);
-    // タイヤの煙：上からの視点と同じ粒を、立体の中では「ぼかした丸い絵」を置くだけで描く（軽い）。
-    // 車と一緒に遠い順に並べ、車の手前の煙は車に重なり、奥の煙は車に隠れるようにする
+    for (k = 0; k < items.length; k++){
+      var ic = items[k].c, ih = TRACK[Math.max(0, Math.min(TRACK.length-1, ic.idx || 0))].h;
+      items[k].z = toC(cam, ic.x, ic.y, ih + 6).Z;
+    }
+    // タイヤの煙：上からの視点と同じ粒を、立体の中では「ぼかした丸い絵」を置くだけで描く（軽い）
     if (vp.marks) {
-      // 粒が多いときは1つおきにして、塗る量を抑える
-      var sstep = smoke.length > 36 ? 2 : 1;
+      var sstep = smoke.length > 36 ? 2 : 1;            // 粒が多いときは1つおきにして、塗る量を抑える
       for (k = 0; k < smoke.length; k += sstep){
         var sm = smoke[k];
-        var sd = Math.hypot(sm.x - cam.x, sm.y - cam.y);
-        if (sd > 480 || sm.h === undefined) continue;
-        cars.push({ smoke: sm, d: sd });
+        if (sm.h === undefined || Math.hypot(sm.x - cam.x, sm.y - cam.y) > 480) continue;
+        items.push({ smoke: sm, z: toC(cam, sm.x, sm.y, sm.h + 6).Z });
       }
     }
-    cars.sort(function(a, b){ return b.d - a.d; });
-    for (k = 0; k < cars.length; k++){
-      if (cars[k].smoke) puff(cam, vp, cars[k].smoke);
-      else car3(cam, vp, cars[k].c, cars[k].col, cars[k].a);
+    items.sort(function(a, b){ return b.z - a.z; });
+    var ii = 0;
+    function drawItemsBeyond(z){
+      while (ii < items.length && items[ii].z > z){
+        var it = items[ii++];
+        if (it.smoke) puff(cam, vp, it.smoke); else car3(cam, vp, it.c, it.col, it.a);
+      }
     }
+
+    var WO = HALF + WALL, EO = HALF + 2.5, j, ft, ti2, sL, sR, gL, gR;
+    for (var bi = 0; bi < bands.length; bi++){
+      var band = bands[bi];
+      drawItemsBeyond(band.top + 20);       // この帯より奥にいる車を先に
+      var each = function(fn){
+        for (var q = 0; q < band.s.length; q++){
+          j = band.s[q][1]; ti2 = i0 + j;
+          ft = Math.round(Math.max(0, band.s[q][0]) / FOG.dist * 24) / 24;   // 色の数を減らしてまとめ塗りを効かせる
+          // 隣の道（ヘアピンの折り返し先）と重ならない幅に抑える
+          var T0 = TRACK[ti2];
+          // ガードレールは、車体が壁ぎわまで寄っても突き抜けて見えない所（壁の線＋車幅の半分）に立てる
+          sL = Math.max(EO + 1, Math.min(WO + 14, T0.roomL - HALF - 2)); sR = Math.max(EO + 1, Math.min(WO + 14, T0.roomR - HALF - 2));
+          gL = Math.min(WO + 300, T0.roomL - HALF - 4); gR = Math.min(WO + 300, T0.roomR - HALF - 4);
+          fn();
+        }
+      };
+      var B = batch(vp);
+      each(function(){   // 地面：路肩の外へ広がり、外ほど少し下がる（道が宙に浮いて見えないように）
+        var c = fogC(RGB_GROUND, ft);
+        if (gL > sL) bAdd(B, [off(j,-gL,-14), offN(j,-gL,-14), offN(j,-sL), off(j,-sL)], c);
+        if (gR > sR) bAdd(B, [off(j,sR), offN(j,sR), offN(j,gR,-14), off(j,gR,-14)], c);
+      });
+      bFlush(B, false); B = batch(vp);
+      each(function(){   // 路肩（土）：白線の外側だけ
+        var c = fogC(RGB_WALL, ft);
+        bAdd(B, [off(j,-sL), offN(j,-sL), offN(j,-HALF), off(j,-HALF)], c);
+        bAdd(B, [off(j,HALF), offN(j,HALF), offN(j,sR), off(j,sR)], c);
+      });
+      bFlush(B, false); B = batch(vp);
+      each(function(){   // 白線：路面の外側の細い帯だけ
+        var c = fogC(RGB_EDGE, ft);
+        bAdd(B, [off(j,-EO), offN(j,-EO), offN(j,-HALF+0.5), off(j,-HALF+0.5)], c);
+        bAdd(B, [off(j,HALF-0.5), offN(j,HALF-0.5), offN(j,EO), off(j,EO)], c);
+      });
+      bFlush(B, false); B = batch(vp);
+      var B2 = batch(vp);
+      each(function(){   // 路面（上から見たときの坂の色づけと同じく、下りは水色・上りは橙を薄く混ぜる）
+        var gg = TRACK[ti2].g, rr = weather === 'rain' ? RGB_WET : RGB_ROAD;
+        var tint = Math.round(Math.min(0.13, Math.abs(gg) * 0.75) * 50) / 50;
+        var rc = gg >= 0 ? [rr[0] + (95-rr[0])*tint, rr[1] + (211-rr[1])*tint, rr[2] + (224-rr[2])*tint]
+                         : [rr[0] + (240-rr[0])*tint, rr[1] + (135-rr[1])*tint, rr[2] + (58-rr[2])*tint];
+        bAdd(B, [off(j,-HALF+0.5), offN(j,-HALF+0.5), offN(j,HALF-0.5), off(j,HALF-0.5)], fogC(rc, ft));
+        // 中央の破線（コース上の距離で決めるので、走っても模様がずれない）
+        if (Math.round(TRACK[ti2].d / STEP) % 4 < 2)
+          bAdd(B2, [off(j,-1), off(j+1,-1), off(j+1,1), off(j,1)], fogC(RGB_CEN, ft));
+        // スタートとゴールの線
+        if (ti2 === 0 || ti2 === TRACK.length - 2)
+          bAdd(B2, [off(j,-HALF), off(j+1,-HALF), off(j+1,HALF), off(j,HALF)], ti2 === 0 ? 'rgba(232,228,216,0.75)' : 'rgba(95,211,224,0.8)');
+      });
+      bFlush(B, false); bFlush(B2, false);
+      // この帯の轍と、前照灯の光
+      if (band.marks.length) {
+        var BM = batch(vp);
+        for (k = 0; k < band.marks.length; k++) bAdd(BM, band.marks[k], 'rgba(0,0,0,0.42)');
+        bFlush(BM, false);
+      }
+      if (band.lights.length) {
+        ctx.globalCompositeOperation = 'lighter';
+        for (k = 0; k < band.lights.length; k++) polyC(vp, band.lights[k].pts, band.lights[k].col);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      B = batch(vp);
+      each(function(){   // ガードレール（路肩の外の端。低い板）は立っているので帯の最後に
+        var rc2 = fogC(RGB_RAIL, Math.min(1, ft + 0.2));
+        bAdd(B, [off(j,-sL), offN(j,-sL), offN(j,-sL,8), off(j,-sL,8)], rc2);
+        bAdd(B, [off(j,sR), offN(j,sR), offN(j,sR,8), off(j,sR,8)], rc2);
+      });
+      bFlush(B, false);
+    }
+    drawItemsBeyond(-1e9);                   // 残り（いちばん手前）の車と煙
   }
 
 // 運転席の目の位置（車の中心から 前 f・右 r。右ハンドルなので右の座席）
