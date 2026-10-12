@@ -2111,7 +2111,7 @@
     if (car.wall) {
       if (window.WADACHI_AUDIO) WADACHI_AUDIO.hitWall();
       pending = 0; mult = 1; driftT = 0;
-      for (var i=0;i<8;i++) smoke.push({ x:car.x, y:car.y, r:4+Math.random()*7, life:1 });
+      for (var i=0;i<8;i++) smoke.push({ x:car.x, y:car.y, r:4+Math.random()*7, life:1, h:TRACK[idx].h });
     }
 
     // 滑り具合
@@ -2140,7 +2140,7 @@
         marks.push({ x1:lastWheels.r.x, y1:lastWheels.r.y, x2:wr.x, y2:wr.y, h:TRACK[idx].h });
         while (marks.length > 1400) marks.shift();
       }
-      if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1 });
+      if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1, h:TRACK[idx].h });
       lastWheels = { l:wl, r:wr };
     } else lastWheels = null;
 
@@ -2331,7 +2331,7 @@
         marks.push({ x1:rivWheels.r.x, y1:rivWheels.r.y, x2:wr.x, y2:wr.y, h:TRACK[r.idx].h });
         while (marks.length > 1400) marks.shift();
       }
-      if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1 });
+      if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1, h:TRACK[r.idx].h });
       rivWheels = { l:wl, r:wr };
     } else rivWheels = null;
 
@@ -2340,7 +2340,7 @@
     if (hit > 25 && bumpT <= 0) {
       bumpT = 0.25;
       if (window.WADACHI_AUDIO) WADACHI_AUDIO.hitWall();
-      for (var s = 0; s < 4; s++) smoke.push({ x:(car.x+r.x)/2, y:(car.y+r.y)/2, r:3+Math.random()*5, life:1 });
+      for (var s = 0; s < 4; s++) smoke.push({ x:(car.x+r.x)/2, y:(car.y+r.y)/2, r:3+Math.random()*5, life:1, h:TRACK[idx].h });
     }
   }
 
@@ -2822,7 +2822,7 @@
           marks.push({ x1:lastWheels.r.x, y1:lastWheels.r.y, x2:wr.x, y2:wr.y, h:TRACK[idx].h });
           while (marks.length > 1400) marks.shift();
         }
-        if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1 });
+        if (Math.random() < dt*30) smoke.push({ x:(wl.x+wr.x)/2, y:(wl.y+wr.y)/2, r:3+Math.random()*5, life:1, h:TRACK[idx].h });
         lastWheels = { l:wl, r:wr };
       } else lastWheels = null;
       for (var s = smoke.length-1; s >= 0; s--){
@@ -3246,6 +3246,30 @@
     }
   }
 
+  // 煙の粒の絵（白っぽい、ふちがぼけた丸）。最初に一度だけ作って使い回す
+  var PUFF = null;
+  function puffImg(){
+    if (PUFF) return PUFF;
+    PUFF = document.createElement('canvas'); PUFF.width = PUFF.height = 64;
+    var g = PUFF.getContext('2d'), rg = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+    rg.addColorStop(0, 'rgba(214,214,222,1)'); rg.addColorStop(0.45, 'rgba(200,200,210,0.55)'); rg.addColorStop(1, 'rgba(190,190,200,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+    return PUFF;
+  }
+  // 煙1粒：路面から少し浮かせ、時間がたつほど上がって広がり、薄くなる
+  function puff(cam, vp, sm){
+    var life = Math.max(0, sm.life);
+    var q = toC(cam, sm.x, sm.y, sm.h + 4 + (1 - life) * 9);
+    if (q.Z < 22) return;                 // 目の前の煙は画面いっぱいに広がって重いので描かない
+    var sz = Math.min(80, sm.r * 2.6 * vp.F / q.Z);   // 大きくなりすぎないように（塗る量＝重さ）
+    if (sz < 1) return;
+    var sx = vp.cx + q.X * vp.F / q.Z, sy = vp.hor - q.Y * vp.F / q.Z;
+    if (sx < -sz || sx > W + sz || sy < -sz || sy > H + sz) return;
+    ctx.globalAlpha = life * 0.42 * (weather === 'fog' ? 0.7 : 1);
+    ctx.drawImage(puffImg(), sx - sz/2, sy - sz/2, sz, sz);
+    ctx.globalAlpha = 1;
+  }
+
   // 景色を1枚描く（本画面とルームミラーで使い回す）
   function scene(cam, vp){
     var i, k;
@@ -3383,8 +3407,23 @@
       }
     }
     for (k = 0; k < cars.length; k++) cars[k].d = Math.hypot(cars[k].c.x - cam.x, cars[k].c.y - cam.y);
+    // タイヤの煙：上からの視点と同じ粒を、立体の中では「ぼかした丸い絵」を置くだけで描く（軽い）。
+    // 車と一緒に遠い順に並べ、車の手前の煙は車に重なり、奥の煙は車に隠れるようにする
+    if (vp.marks) {
+      // 粒が多いときは1つおきにして、塗る量を抑える
+      var sstep = smoke.length > 36 ? 2 : 1;
+      for (k = 0; k < smoke.length; k += sstep){
+        var sm = smoke[k];
+        var sd = Math.hypot(sm.x - cam.x, sm.y - cam.y);
+        if (sd > 480 || sm.h === undefined) continue;
+        cars.push({ smoke: sm, d: sd });
+      }
+    }
     cars.sort(function(a, b){ return b.d - a.d; });
-    for (k = 0; k < cars.length; k++) car3(cam, vp, cars[k].c, cars[k].col, cars[k].a);
+    for (k = 0; k < cars.length; k++){
+      if (cars[k].smoke) puff(cam, vp, cars[k].smoke);
+      else car3(cam, vp, cars[k].c, cars[k].col, cars[k].a);
+    }
   }
 
 // 運転席の目の位置（車の中心から 前 f・右 r。右ハンドルなので右の座席）
