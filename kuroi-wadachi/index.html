@@ -2810,6 +2810,12 @@
     var slip = Math.abs(Math.atan2(lat, Math.max(18, fwd)));
     lastSlip = slip; lastSp = sp;
     sliding = (slip > 0.18 && sp > 80);
+    // ドリフト中は、前輪を「進んでいく向き」へ向ける（カウンターを当てている姿）。
+    // 記録にはハンドルの操作が無いので、車体の向きと進む向きのずれから決める
+    if (slip > 0.12 && sp > 50) {
+      steerV = Math.max(-1, Math.min(1, Math.atan2(lat, Math.max(1, fwd)) / 0.55));
+      car.steerV = steerV;
+    }
     if (dt > 0) {
       if (sliding) { driftT += dt; mult = Math.min(8, 1 + Math.floor(driftT / 1.5)); pending += slip * sp * dt * 1.6; idleT = 0; }
       else { idleT += dt; if (pending > 0 && idleT > 0.4) bank(); }
@@ -2837,7 +2843,11 @@
       riv.vx = (qb.x - qa.x) / span; riv.vy = (qb.y - qa.y) / span;
       var rfx = Math.sin(riv.ang), rfy = -Math.cos(riv.ang);
       riv.fwd = riv.vx*rfx + riv.vy*rfy; riv.lat = riv.vx*Math.cos(riv.ang) + riv.vy*Math.sin(riv.ang);
-      riv.steerV = 0; riv.hitT = 0;
+      // 相手の車も、滑っている間は前輪を進む向きへ
+      var rlat = riv.lat, rfwd = riv.fwd, rsp = Math.hypot(riv.vx, riv.vy);
+      riv.steerV = (rsp > 50 && Math.abs(Math.atan2(rlat, Math.max(18, rfwd))) > 0.12)
+        ? Math.max(-1, Math.min(1, Math.atan2(rlat, Math.max(1, rfwd)) / 0.55)) : 0;
+      riv.hitT = 0;
       // 相手の轍も残す
       if (dt > 0) {
         var rrx = Math.cos(riv.ang), rry = Math.sin(riv.ang);
@@ -3115,11 +3125,12 @@
     box(-11.4,11.4, 26.6,29.8, zt(28), zt(28) + 1.2, 'body');
     // タイヤ（円柱。外側の面とホイール）
     function tire(cx, cy, xin, xout, R){
+      var piv = cy < 0 ? [(xin + xout) / 2, cy] : null;   // 前輪だけ、ハンドルで向きが変わる
       var S = 16, ring2 = [];
       for (k = 0; k < S; k++){ var an = k / S * Math.PI * 2; ring2.push([cy + Math.cos(an)*R, R + Math.sin(an)*R]); }
       for (k = 0; k < S; k++){
         var u = ring2[k], v = ring2[(k+1) % S];
-        F.push([[[xin,u[0],u[1]], [xout,u[0],u[1]], [xout,v[0],v[1]], [xin,v[0],v[1]]], 'tire']);
+        F.push([[[xin,u[0],u[1]], [xout,u[0],u[1]], [xout,v[0],v[1]], [xin,v[0],v[1]]], 'tire', piv]);
       }
       var cap = [], hub = [], hubc = [];
       for (k = 0; k < S; k++){
@@ -3127,9 +3138,9 @@
         hub.push([xout + (xout > 0 ? 0.15 : -0.15), cy + (ring2[k][0]-cy)*0.70, R + (ring2[k][1]-R)*0.70]);
         hubc.push([xout + (xout > 0 ? 0.25 : -0.25), cy + (ring2[k][0]-cy)*0.22, R + (ring2[k][1]-R)*0.22]);
       }
-      F.push([cap, 'tire']);
-      D.push([hub, 'hub']);
-      D.push([hubc, 'hubc']);
+      F.push([cap, 'tire', piv]);
+      D.push([hub, 'hub', piv]);
+      D.push([hubc, 'hubc', piv]);
     }
     tire(0, -18.5, -8.0, -14.0, 5.0); tire(0, -18.5, 8.0, 14.0, 5.0);   // 泥よけの内側に収まる幅
     tire(0,  18.5, -7.8, -14.4, 5.2); tire(0,  18.5, 7.8, 14.4, 5.2);
@@ -3152,11 +3163,19 @@
     var fogT = Math.min(0.85, d / (FOG.dist * 1.15)), rgb = rgbOf(hex);
     var fx = Math.sin(c.ang), fy = -Math.cos(c.ang), rx = Math.cos(c.ang), ry = Math.sin(c.ang);
     // 上から見た絵の座標(x 右, y 後ろ) → 世界
-    function Wd(p){ return [c.x + rx*p[0] - fx*p[1], c.y + ry*p[0] - fy*p[1], base + p[2]]; }
+    // 前輪の切れ角（上から見た絵と同じく ハンドル×0.55）。右へ切る＝時計回り
+    var wa = Math.max(-1, Math.min(1, c.steerV || 0)) * 0.55, wcs = Math.cos(wa), wsn = Math.sin(wa);
+    function Wd(p, piv){
+      if (piv) {
+        var dx = p[0] - piv[0], dy = p[1] - piv[1];
+        p = [piv[0] + dx*wcs - dy*wsn, piv[1] + dx*wsn + dy*wcs, p[2]];
+      }
+      return [c.x + rx*p[0] - fx*p[1], c.y + ry*p[0] - fy*p[1], base + p[2]];
+    }
     var cw = Wd([0, 0, 7]);
     function prep(f){
       var P = f[0], wp = [], cx = 0, cy = 0, cz = 0, i;
-      for (i = 0; i < P.length; i++){ var w = Wd(P[i]); wp.push(w); cx += w[0]; cy += w[1]; cz += w[2]; }
+      for (i = 0; i < P.length; i++){ var w = Wd(P[i], f[2]); wp.push(w); cx += w[0]; cy += w[1]; cz += w[2]; }
       cx /= P.length; cy /= P.length; cz /= P.length;
       // 面の向き（外向きにそろえる）
       var ax = wp[1][0]-wp[0][0], ay = wp[1][1]-wp[0][1], az = wp[1][2]-wp[0][2];
@@ -3592,10 +3611,11 @@ function drawCarNew(ctx, COL, steerV, sliding, slip, blink, brakeOn){
     ctx.restore();
   }
   var sm = sliding ? 0.8 + slip * 1.5 : 0;
-  wheel(-11.9, -18.5, sa, 6.2, 13.0, sm * 0.5);
-  wheel( 11.9, -18.5, sa, 6.2, 13.0, sm * 0.5);
-  wheel(-12.4,  18.5, 0,  7.2, 13.6, sm);
-  wheel( 12.4,  18.5, 0,  7.2, 13.6, sm);
+  // 泥よけを控えめにしたので、タイヤも内側へ（外の縁が車体の縁から少しだけ覗く）
+  wheel(-11.0, -18.5, sa, 6.2, 13.0, sm * 0.5);
+  wheel( 11.0, -18.5, sa, 6.2, 13.0, sm * 0.5);
+  wheel(-11.2,  18.5, 0,  7.0, 13.6, sm);
+  wheel( 11.2,  18.5, 0,  7.0, 13.6, sm);
 
   // ---- 影 ----
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -3614,18 +3634,18 @@ function drawCarNew(ctx, COL, steerV, sliding, slip, blink, brakeOn){
 
   ctx.save(); bodyPath(ctx, 0, 0); ctx.clip();
 
-  // 泥よけの張り出し
-  ctx.fillStyle = 'rgba(0,0,0,0.26)';
-  rr(ctx, -15.2, -25.0, 4.6, 14.0, 2.2); ctx.fill();
-  rr(ctx,  10.6, -25.0, 4.6, 14.0, 2.2); ctx.fill();
-  rr(ctx, -15.6,  11.5, 5.0, 14.5, 2.2); ctx.fill();
-  rr(ctx,  10.6,  11.5, 5.0, 14.5, 2.2); ctx.fill();
+  // 泥よけの張り出し（控えめ。うっすら影を落とす程度）
+  ctx.fillStyle = 'rgba(0,0,0,0.20)';
+  rr(ctx, -14.2, -25.0, 3.4, 14.0, 2.0); ctx.fill();
+  rr(ctx,  10.8, -25.0, 3.4, 14.0, 2.0); ctx.fill();
+  rr(ctx, -14.6,  11.5, 3.6, 14.5, 2.0); ctx.fill();
+  rr(ctx,  11.0,  11.5, 3.6, 14.5, 2.0); ctx.fill();
   // 泥よけの縁の線
-  ctx.strokeStyle = 'rgba(0,0,0,0.42)'; ctx.lineWidth = 0.9;
-  ctx.beginPath(); ctx.moveTo(-10.8, -25.0); ctx.lineTo(-10.8, -11.0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo( 10.8, -25.0); ctx.lineTo( 10.8, -11.0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(-11.0,  11.5); ctx.lineTo(-11.0,  26.0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo( 11.0,  11.5); ctx.lineTo( 11.0,  26.0); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.34)'; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(-11.0, -25.0); ctx.lineTo(-11.0, -11.0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 11.0, -25.0); ctx.lineTo( 11.0, -11.0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-11.2,  11.5); ctx.lineTo(-11.2,  26.0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 11.2,  11.5); ctx.lineTo( 11.2,  26.0); ctx.stroke();
   // 横に走る細い帯
   ctx.fillStyle = 'rgba(0,0,0,0.20)';
   ctx.fillRect(-13.0, -3.0, 2.2, 12.0);
@@ -3729,14 +3749,18 @@ function bodyPath(ctx, dx, dy){
   ctx.beginPath();
   ctx.moveTo(dx +  -6.2, dy + -31.2);
   ctx.lineTo(dx + -11.4, dy + -28.6);
-  ctx.quadraticCurveTo(dx + -14.4, dy + -25.6, dx + -14.2, dy + -18.5);  // 前の張り出し
-  ctx.quadraticCurveTo(dx + -11.8, dy +  -5.0, dx + -12.0, dy +   8.0);  // 胴を絞る
-  ctx.quadraticCurveTo(dx + -15.2, dy +  13.0, dx + -15.0, dy +  21.0);  // 後ろの張り出し
+  // 泥よけの張り出しは控えめ（立体の車と同じ輪郭）
+  ctx.quadraticCurveTo(dx + -13.7, dy + -25.6, dx + -13.6, dy + -18.5);  // 前の張り出し
+  ctx.quadraticCurveTo(dx + -12.5, dy +  -5.0, dx + -12.6, dy +   8.0);  // 胴を絞る
+  ctx.quadraticCurveTo(dx + -14.1, dy +  13.0, dx + -14.0, dy +  21.0);  // 後ろの張り出し
+  ctx.lineTo(dx + -13.4, dy +  25.5);
   ctx.lineTo(dx + -11.2, dy +  30.0);
   ctx.lineTo(dx +  11.2, dy +  30.0);
-  ctx.quadraticCurveTo(dx +  15.2, dy +  13.0, dx +  12.0, dy +   8.0);
-  ctx.quadraticCurveTo(dx +  11.8, dy +  -5.0, dx +  14.2, dy + -18.5);
-  ctx.quadraticCurveTo(dx +  14.4, dy + -25.6, dx +  11.4, dy + -28.6);
+  ctx.lineTo(dx +  13.4, dy +  25.5);
+  ctx.lineTo(dx +  14.0, dy +  21.0);
+  ctx.quadraticCurveTo(dx +  14.1, dy +  13.0, dx +  12.6, dy +   8.0);
+  ctx.quadraticCurveTo(dx +  12.5, dy +  -5.0, dx +  13.6, dy + -18.5);
+  ctx.quadraticCurveTo(dx +  13.7, dy + -25.6, dx +  11.4, dy + -28.6);
   ctx.closePath();
 }
 
