@@ -1722,6 +1722,8 @@
     car.x = s0.x; car.y = s0.y; car.ang = s0.a; car.vx = 0; car.vy = 0;
     camX = car.x - W/2; camY = car.y - H/2;
     idx = 0; time = 0;
+    // 車に持たせている写し（立体の絵が使う）も戻す。前のコースの番号のままだと、短いコースでは絵が止まる
+    car.idx = 0; car.steerV = 0;
     nextGate = 0; gatePrevS = null;
     score = 0; pending = 0; mult = 1; driftT = 0; idleT = 0; sliding = false;
     marks.length = 0; smoke.length = 0; lastWheels = null; hitT = 0; stuckT = 0; holdT = 0; steerV = 0;
@@ -3337,7 +3339,7 @@
   // 光の帯を作って返す（描くのは景色の側で、奥行きの帯ごとに）
   function lightCone(cam, c){
     var fx = Math.sin(c.ang), fy = -Math.cos(c.ang), rx = Math.cos(c.ang), ry = Math.sin(c.ang);
-    var from = Math.max(0, c.idx || 0), prev = null, s, k, out = [];
+    var from = Math.max(0, Math.min(TRACK.length - 1, c.idx || 0)), prev = null, s, k, out = [];
     for (s = 10; s <= 370; s += 30){
       var px = c.x + fx*s, py = c.y + fy*s;
       // その地点にいちばん近いコースの点の高さ（車の位置から先を探す）
