@@ -282,6 +282,10 @@
     border:1px solid rgba(196,192,182,.22);border-radius:3px;padding:5px 8px;
   }
   .veil .gh{ color:var(--cool);font-size:13.5px;letter-spacing:.04em; }
+  .medal{display:inline-block;min-width:1.6em;padding:0 5px;border-radius:9px;font-weight:700;font-size:12.5px;
+    letter-spacing:0;text-align:center;color:#1A1A1E;line-height:1.5}
+  .medal.m1{background:#C8875A} .medal.m2{background:#C9CDD4} .medal.m3{background:#F2C94C}
+  .medal.m0{background:transparent;color:var(--dim);border:1px solid rgba(196,192,182,.3)}
   .ghb{
     -webkit-appearance:none;appearance:none;cursor:pointer;
     font-family:'Oxanium',monospace;font-size:11px;letter-spacing:.14em;
@@ -1717,6 +1721,47 @@
   }
   function fmt(t){ return t.toFixed(2); }
 
+  // ---------- メダル（コース × 天気ごとの目標タイム）----------
+  // 金＝ライバルの運転手を全開（アクセル床まで・速さの上限なし。物語の最後の相手とほぼ同じ強さ）で
+  //   1台だけ走らせたタイム。node で運転のしかた16通りを試し、いちばん速かったものを 0.1秒単位で切り上げた。
+  //   霧はコンピュータには効かない（先が見えなくても走りは同じ）ので、晴れの3%増しにした（作り手の決め）。
+  // 銀＝金の8%増し、銅＝金の20%増し。車の仕上げでは分けない。物語の勝負には付けない。
+  //   [コース 0〜5][晴れ, 雨, 霧] = [金, 銀, 銅]
+  var MEDAL = [
+    [[24.1,26.1,29.0], [23.7,25.6,28.5], [24.8,26.8,29.8]],
+    [[22.8,24.7,27.4], [25.0,27.0,30.0], [23.5,25.4,28.2]],
+    [[23.3,25.2,28.0], [24.0,26.0,28.8], [24.0,26.0,28.8]],
+    [[26.6,28.8,32.0], [26.9,29.1,32.3], [27.4,29.6,32.9]],
+    [[24.4,26.4,29.3], [25.1,27.2,30.2], [25.1,27.2,30.2]],
+    [[24.9,26.9,29.9], [25.8,27.9,31.0], [25.7,27.8,30.9]]
+  ];
+  var MEDALNAME = ['', '銅', '銀', '金'];
+  function medalT(){ return MEDAL[courseIdx][weather === 'rain' ? 1 : weather === 'fog' ? 2 : 0]; }
+  function medalOf(t){ var m = medalT(); return !(t > 0) ? 0 : t <= m[0] ? 3 : t <= m[1] ? 2 : t <= m[2] ? 1 : 0; }
+  // いまのコース・天気で取ったメダル。車の仕上げ3通りのベストのうち いちばん速いもので決める
+  // （ベストのタイムから出すので、メダルを入れる前に走った記録にも付く）
+  function medalGot(){
+    var b = 0;
+    for (var k in TUNES) {
+      var sl = String(courseIdx) + (weather !== 'clear' ? '-' + weather : '') + (k !== 'std' ? '-' + k : '');
+      slotLoad(sl);
+      if (bests[sl] > 0 && (b === 0 || bests[sl] < b)) b = bests[sl];
+    }
+    return medalOf(b);
+  }
+  function medalBadge(m){ return '<span class="medal m' + m + '">' + (m ? MEDALNAME[m] : '－') + '</span>'; }
+  function medalLine(){
+    var m = medalT();
+    return '<br><span class="gh">メダル ' + medalBadge(medalGot()) + '　金 ' + m[0].toFixed(1) + '／銀 ' + m[1].toFixed(1) + '／銅 ' + m[2].toFixed(1) + '</span>';
+  }
+  // ゴールしたときの一行。prev＝この走りの前に持っていたメダル
+  function medalResult(t, prev){
+    var got = medalOf(t), m = medalT(), s = '';
+    if (got) s = medalBadge(got) + ' メダル' + (got > prev ? '　<b>はじめて</b>' : '');
+    if (got < 3) s += (s ? '　' : '') + MEDALNAME[got + 1] + 'まで あと ' + fmt(t - m[3 - (got + 1)]) + ' 秒';
+    return '<br><span class="gh">' + s + '</span>';
+  }
+
   function reset(){
     var s0 = TRACK[0];
     car.x = s0.x; car.y = s0.y; car.ang = s0.a; car.vx = 0; car.vy = 0;
@@ -1767,7 +1812,7 @@
       '<span class="gh">' + ghostLine() + '</span>' +
       (wiped ? '<br><span class="gh" style="color:#F0873A">走り方を変えたので、前の決まりで出した記録は消しました</span>' : '') +
       (mode === 'drift' ? '<br><span class="gh">ドリフト点で競う　自己ベスト ' + driftBest().toLocaleString('ja-JP') + ' 点</span>' : '') +
-      condNote() + replayRow();
+      (mode === 'time' ? medalLine() : '') + condNote() + replayRow();
     goBtn.textContent = 'スタート';
     veil.classList.remove('off');
     countEl.classList.add('off');
@@ -1798,6 +1843,7 @@
       dNew = true;
       try { localStorage.setItem('wadachi.drift.' + SL(), String(score)); } catch(e){}
     }
+    var prevMedal = medalGot();
     var isNew = (best === 0 || time < best);
     if (isNew) { best = time; saveBest(); }
     // 手本がまだ無ければ、ベスト更新でなくてもこの1本を手本にする。
@@ -1815,7 +1861,7 @@
       veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
         '<span class="big">' + fmt(time) + '</span><br>' +
         '<span class="sub">' + (isNew ? 'NEW BEST' : 'BEST ' + fmt(best)) + '</span><br>' +
-        'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + condNote() + replayRow();
+        'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + medalResult(time, prevMedal) + condNote() + replayRow();
     }
     goBtn.textContent = 'もういちど';
     veil.classList.remove('off');

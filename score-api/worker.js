@@ -53,11 +53,16 @@ const GAMES = {
 //   wadachi-<1〜6>[-rain|-fog][-turn|-speed]  … タイム（小さいほど上位）
 //   wadachi-d<1〜6>[-rain|-fog][-turn|-speed] … ドリフト点（大きいほど上位）
 const WADACHI_RE = /^wadachi-(d?)([1-6])(-(rain|fog))?(-(turn|speed))?$/;
+// タイムの下限（コース1〜6）。これより速いタイムは送られても受けない（外から 0.00秒 を送って1位になるのを防ぐ）。
+// ゲームの運転手（コンピュータ）を全開で走らせたいちばん速いタイム（天気・車の仕上げ すべての中で）の
+// 8割を、秒の整数に切り捨てたもの。人の記録はいまのところ その運転手より 0.5秒ほど速いのが最高。
+const WADACHI_MIN = { '1': 18, '2': 18, '3': 17, '4': 20, '5': 19, '6': 19 };
 function ruleOf(game){
-  if (GAMES[game]) return GAMES[game];
   const m = WADACHI_RE.exec(game || '');
+  if (m && !m[1]) return { order: 'asc', max: 3600, min: WADACHI_MIN[m[2]], unit: '秒' };
+  if (GAMES[game]) return GAMES[game];
   if (!m) return null;
-  return m[1] ? { order: 'desc', max: 99999999, unit: '点' } : { order: 'asc', max: 3600, unit: '秒' };
+  return { order: 'desc', max: 99999999, unit: '点' };
 }
 
 // 名前に使わせない語句。網であって、完全ではない。
@@ -195,7 +200,7 @@ export default {
       if (typeof body.score !== 'number' || !isFinite(body.score)) {
         return json({ error: '点数がおかしいです' }, 400, head);
       }
-      if (body.score < 0 || body.score > rule.max) {
+      if (body.score < (rule.min || 0) || body.score > rule.max) {
         return json({ error: '点数がおかしいです' }, 400, head);
       }
       const s = Math.round(body.score * 100) / 100;   // 小数第2位まで（タイム用）
@@ -257,7 +262,7 @@ export default {
       if (typeof body.score !== 'number' || !isFinite(body.score)) {
         return json({ error: '記録がおかしいです' }, 400, head);
       }
-      if (body.score < 0 || body.score > rule.max) {
+      if (body.score < (rule.min || 0) || body.score > rule.max) {
         return json({ error: '記録がおかしいです' }, 400, head);
       }
       const s = Math.round(body.score * 100) / 100;
