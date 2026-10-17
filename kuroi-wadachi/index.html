@@ -3066,11 +3066,27 @@
   function polyC(vp, pts, fill, seam){
     var sp = projC(vp, pts);
     if (!sp) return;
+    // 区間どうしの継ぎ目に細い隙間が見えるので、面をほんの少し（0.45）外へ広げて塗り、となりと重ねて埋める。
+    // 前は同じ色で縁をなぞっていたが、なぞる処理は塗るより重く、車の絵の半分以上を食っていた
+    if (seam) sp = grow(sp, 0.45);
     ctx.fillStyle = fill;
     ctx.beginPath(); pathOf(sp); ctx.fill();
-    // 区間どうしの継ぎ目に細い隙間が見えるので、同じ色で縁をなぞって埋める
-    // 角は丸くつなぐ（とがった細い面だと、角が長いひげになって飛び出す）
-    if (seam) { ctx.strokeStyle = fill; ctx.lineWidth = 0.9; ctx.lineJoin = 'round'; ctx.stroke(); ctx.lineJoin = 'miter'; }
+  }
+  // 多角形 sp の各辺を e だけ外へずらした形。とがった角は伸ばしすぎない（細い面の角がひげにならないように）
+  function grow(sp, e){
+    var n = sp.length / 2, a2 = 0, i;
+    for (i = 0; i < n; i++){ var j = (i + 1) % n; a2 += sp[2*i]*sp[2*j+1] - sp[2*j]*sp[2*i+1]; }
+    if (!a2) return sp;
+    var sg = a2 > 0 ? 1 : -1, out = new Array(sp.length);
+    for (i = 0; i < n; i++){
+      var p = (i - 1 + n) % n, q = (i + 1) % n, x = sp[2*i], y = sp[2*i+1];
+      var ex1 = x - sp[2*p], ey1 = y - sp[2*p+1], l1 = Math.hypot(ex1, ey1);
+      var ex2 = sp[2*q] - x, ey2 = sp[2*q+1] - y, l2 = Math.hypot(ex2, ey2);
+      var n1x = l1 ? sg*ey1/l1 : 0, n1y = l1 ? -sg*ex1/l1 : 0, n2x = l2 ? sg*ey2/l2 : 0, n2y = l2 ? -sg*ex2/l2 : 0;
+      var d = Math.max(0.5, 1 + n1x*n2x + n1y*n2y);
+      out[2*i] = x + e*(n1x + n2x)/d; out[2*i+1] = y + e*(n1y + n2y)/d;
+    }
+    return out;
   }
   // 同じ色の多角形をためておき、色ごとに1回で塗る（塗る回数を減らして軽くする）
   function batch(vp){ return { vp: vp, keys: [], map: {} }; }
@@ -3969,7 +3985,7 @@ function shade(hex, k){
   }
 
   // ---------- まわす ----------
-  var lastT = 0, acc = 0;
+  var lastT = 0, acc = 0, drawnW = 0, drawnH = 0;
   function frame(now){
     requestAnimationFrame(frame);
     if (!lastT) { lastT = now; return; }
@@ -3981,7 +3997,8 @@ function shade(hex, k){
       var g = 0;
       while (acc >= 1/60 && g < 6) { step(1/60); acc -= 1/60; g++; }
       if (g >= 6) acc = 0;
-      draw();
+      // 1秒に120回など書き換えの速い画面では、動きが進んでいない回もある。そのときは同じ絵なので描かない
+      if (g > 0 || cv.width !== drawnW || cv.height !== drawnH) { draw(); drawnW = cv.width; drawnH = cv.height; }
     }
     syncDash();
   }
