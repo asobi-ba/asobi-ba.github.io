@@ -57,7 +57,17 @@ const WADACHI_RE = /^wadachi-(d?)([1-6])(-(rain|fog))?(-(turn|speed))?$/;
 // ゲームの運転手（コンピュータ）を全開で走らせたいちばん速いタイム（天気・車の仕上げ すべての中で）の
 // 8割を、秒の整数に切り捨てたもの。人の記録はいまのところ その運転手より 0.5秒ほど速いのが最高。
 const WADACHI_MIN = { '1': 18, '2': 18, '3': 17, '4': 20, '5': 19, '6': 19 };
+// 黒い轍「今日の一本」：wadachi-day-<日本時間の年月日8桁>-<コース1〜6>。日ごとに1本の順位表。
+// 書き込めるのは その日（と、日付をまたいで走り終えた人のために前の日・時計のずれに備えて次の日）だけ。
+const WADACHI_DAY_RE = /^wadachi-day-(\d{8})-([1-6])$/;
+function jstYmd(offsetDays) {
+  const d = new Date(Date.now() + 9 * 3600 * 1000 + offsetDays * 86400 * 1000);
+  return d.toISOString().slice(0, 10).replace(/-/g, '');
+}
+function dayOpen(ymd) { return ymd === jstYmd(0) || ymd === jstYmd(-1) || ymd === jstYmd(1); }
 function ruleOf(game){
+  const dm = WADACHI_DAY_RE.exec(game || '');
+  if (dm) return { order: 'asc', max: 3600, min: WADACHI_MIN[dm[2]], unit: '秒', day: dm[1] };
   const m = WADACHI_RE.exec(game || '');
   if (m && !m[1]) return { order: 'asc', max: 3600, min: WADACHI_MIN[m[2]], unit: '秒' };
   if (GAMES[game]) return GAMES[game];
@@ -200,6 +210,9 @@ export default {
       if (typeof body.score !== 'number' || !isFinite(body.score)) {
         return json({ error: '点数がおかしいです' }, 400, head);
       }
+      if (rule.day && !dayOpen(rule.day)) {
+        return json({ error: 'その日の受付は終わりました' }, 400, head);
+      }
       if (body.score < (rule.min || 0) || body.score > rule.max) {
         return json({ error: '点数がおかしいです' }, 400, head);
       }
@@ -261,6 +274,9 @@ export default {
 
       if (typeof body.score !== 'number' || !isFinite(body.score)) {
         return json({ error: '記録がおかしいです' }, 400, head);
+      }
+      if (rule.day && !dayOpen(rule.day)) {
+        return json({ error: 'その日の受付は終わりました' }, 400, head);
       }
       if (body.score < (rule.min || 0) || body.score > rule.max) {
         return json({ error: '記録がおかしいです' }, 400, head);
