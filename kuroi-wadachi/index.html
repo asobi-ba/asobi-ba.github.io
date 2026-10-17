@@ -3067,7 +3067,8 @@
     ctx.fillStyle = fill;
     ctx.beginPath(); pathOf(sp); ctx.fill();
     // 区間どうしの継ぎ目に細い隙間が見えるので、同じ色で縁をなぞって埋める
-    if (seam) { ctx.strokeStyle = fill; ctx.lineWidth = 0.9; ctx.stroke(); }
+    // 角は丸くつなぐ（とがった細い面だと、角が長いひげになって飛び出す）
+    if (seam) { ctx.strokeStyle = fill; ctx.lineWidth = 0.9; ctx.lineJoin = 'round'; ctx.stroke(); ctx.lineJoin = 'miter'; }
   }
   // 同じ色の多角形をためておき、色ごとに1回で塗る（塗る回数を減らして軽くする）
   function batch(vp){ return { vp: vp, keys: [], map: {} }; }
@@ -3112,6 +3113,25 @@
     quadPts(L, -13.6,-18.5, -12.5,-5.0,  -12.6,  8.0, 8);   // 胴を絞る
     quadPts(L, -12.6,  8.0, -14.1,13.0,  -14.0, 21.0, 6);   // 後ろの張り出し
     L.push([-13.4,25.5], [-11.2,30.0], [-6.0,30.4]);
+    // タイヤハウスの所だけ点を細かく足す（点が粗いと、丸い縁が角ばってがたがたに見える）。
+    // 縁の両端は、同じ場所に「外」と「内」の2点を置いて、縁がまっすぐ下まで落ちるように
+    var AR = [[-18.5, 5.7], [18.5, 6.0]], L2 = [L[0]];
+    for (i = 1; i < L.length; i++){
+      var pa = L[i-1], pb = L[i], ys = [];
+      for (k = 0; k < AR.length; k++){
+        var y0 = AR[k][0] - AR[k][1], y1 = AR[k][0] + AR[k][1];
+        if (Math.max(pa[1], pb[1]) < y0 - 0.5 || Math.min(pa[1], pb[1]) > y1 + 0.5) continue;
+        for (var q0 = 1; q0 < 12; q0++) ys.push(AR[k][0] - AR[k][1] * Math.cos(q0 / 12 * Math.PI));
+        ys.push(y0, y0 + 0.02, y1 - 0.02, y1);
+      }
+      ys = ys.filter(function(v){ return v > pa[1] + 0.01 && v < pb[1] - 0.01; }).sort(function(u, v){ return u - v; });
+      for (k = 0; k < ys.length; k++){
+        var tt = (ys[k] - pa[1]) / (pb[1] - pa[1]);
+        L2.push([pa[0] + (pb[0] - pa[0]) * tt, ys[k]]);
+      }
+      L2.push(pb);
+    }
+    L = L2;
     var ring = L.slice();
     for (i = L.length - 1; i >= 0; i--) ring.push([-L[i][0], L[i][1]]);
     var n = ring.length;
@@ -3144,21 +3164,29 @@
       if (Math.abs(d) < 6.0) return 5.0 + Math.sqrt(6.0*6.0 - d*d);
       return -1e9;
     }
-    // 帯を1枚足す。下の縁がタイヤハウスに掛かる所は、縁を丸く持ち上げる（上の縁を越えたら、そこは切り欠き）
-    function band(a, b, za, zb, c, d, zc, zd){
-      var ya = Math.max(za, archZ(a[0], a[1])), yb = Math.max(zb, archZ(b[0], b[1]));
-      if (ya >= zc && yb >= zd) return;
-      ya = Math.min(ya, zc); yb = Math.min(yb, zd);
-      F.push([[[a[0],a[1],ya], [b[0],b[1],yb], [d[0],d[1],zd], [c[0],c[1],zc]], 'body']);
+    // 側面は3段（下の帯・肩・上へ回り込む面）。各点の断面＝下から上へ4つの点
+    var prof = [], cutZ = [];
+    for (i = 0; i < n; i++){
+      var p = ring[i], pi = inset(i, 1.0), pt = inset(i, 2.4), ztp = zt(p[1]);
+      prof.push([[p[0],p[1],ZB], [p[0],p[1],ZS], [pi[0],pi[1],(ZS + ztp) / 2 + 0.5], [pt[0],pt[1],ztp]]);
+      // タイヤハウスの縁の高さは、断面ごとに外側の点の位置で1つに決める（段ごとに別の位置で測ると縁がぎざぎざになる）
+      cutZ.push(archZ(p[0], p[1]));
+    }
+    // 断面の k 段目の下の点。タイヤハウスに掛かる所は、断面に沿って縁の高さまで持ち上げる
+    function lift(P, k, h){
+      var a = P[k], b = P[k+1];
+      if (h <= a[2]) return a;
+      if (h >= b[2]) return b;
+      var t = (h - a[2]) / (b[2] - a[2]);
+      return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, h];
     }
     for (i = 0; i < n; i++){
-      var j = (i+1) % n, p = ring[i], q = ring[j], pi = inset(i, 1.0), qi = inset(j, 1.0),
-          pt = inset(i, 2.4), qt = inset(j, 2.4);
-      // 側面は3段（下の帯・肩・上へ回り込む面）。タイヤの所は、丸いタイヤハウスの形に下の縁を持ち上げて切り欠く
-      var mp = (ZS + zt(p[1])) / 2 + 0.5, mq = (ZS + zt(q[1])) / 2 + 0.5;
-      band(p, q, ZB, ZB, p, q, ZS, ZS);                      // 下の帯
-      band(p, q, ZS, ZS, pi, qi, mp, mq);                    // 肩
-      band(pi, qi, mp, mq, pt, qt, zt(p[1]), zt(q[1]));      // 上へ回り込む
+      var j = (i+1) % n;
+      for (k = 0; k < 3; k++){
+        var A = prof[i], B = prof[j];
+        if (cutZ[i] >= A[k+1][2] && cutZ[j] >= B[k+1][2]) continue;   // この段は全部切り欠きの中
+        F.push([[lift(A, k, cutZ[i]), lift(B, k, cutZ[j]), B[k+1], A[k+1]], 'body']);
+      }
     }
     // 上の面（ボンネット・荷室のふた）。前後に細かく区切った帯にして、場所ごとに傾きで明るさが変わるように
     var nL = L.length;
