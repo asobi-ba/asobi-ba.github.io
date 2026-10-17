@@ -3135,15 +3135,30 @@
     }
     var F = [], D = [];   // F: 面、D: あとから貼る飾り（灯火・ホイール）
     var ZB = 3.4, ZS = 8.2;          // 車体の下端、肩（ここから上は内側へ丸める）。タイヤの下半分が見える高さ
+    // タイヤハウスの丸い縁の高さ（その場所が切り欠きの中でなければ -1e9）。前は鼻先側のボンネットより低く収める
+    function archZ(x, y){
+      if (Math.abs(x) < 9.5) return -1e9;
+      var d = y + 18.5;
+      if (Math.abs(d) < 5.7) return 4.8 + Math.sqrt(5.7*5.7 - d*d);
+      d = y - 18.5;
+      if (Math.abs(d) < 6.0) return 5.0 + Math.sqrt(6.0*6.0 - d*d);
+      return -1e9;
+    }
+    // 帯を1枚足す。下の縁がタイヤハウスに掛かる所は、縁を丸く持ち上げる（上の縁を越えたら、そこは切り欠き）
+    function band(a, b, za, zb, c, d, zc, zd){
+      var ya = Math.max(za, archZ(a[0], a[1])), yb = Math.max(zb, archZ(b[0], b[1]));
+      if (ya >= zc && yb >= zd) return;
+      ya = Math.min(ya, zc); yb = Math.min(yb, zd);
+      F.push([[[a[0],a[1],ya], [b[0],b[1],yb], [d[0],d[1],zd], [c[0],c[1],zc]], 'body']);
+    }
     for (i = 0; i < n; i++){
       var j = (i+1) % n, p = ring[i], q = ring[j], pi = inset(i, 1.0), qi = inset(j, 1.0),
           pt = inset(i, 2.4), qt = inset(j, 2.4);
-      // 下の帯。タイヤの所は切り欠く（タイヤハウス）。前輪を切ったとき、タイヤが車体の板を突き抜けて見えないように
-      var my = (p[1] + q[1]) / 2;
-      var arch = Math.abs(p[0]) > 10 && (Math.abs(my + 18.5) < 7.0 || Math.abs(my - 18.5) < 7.2);
-      if (!arch) F.push([[[p[0],p[1],ZB], [q[0],q[1],ZB], [q[0],q[1],ZS], [p[0],p[1],ZS]], 'body']);
-      F.push([[[p[0],p[1],ZS], [q[0],q[1],ZS], [qi[0],qi[1],(ZS+zt(q[1]))/2+0.5], [pi[0],pi[1],(ZS+zt(p[1]))/2+0.5]], 'body']);  // 肩
-      F.push([[[pi[0],pi[1],(ZS+zt(p[1]))/2+0.5], [qi[0],qi[1],(ZS+zt(q[1]))/2+0.5], [qt[0],qt[1],zt(q[1])], [pt[0],pt[1],zt(p[1])]], 'body']);   // 上へ回り込む
+      // 側面は3段（下の帯・肩・上へ回り込む面）。タイヤの所は、丸いタイヤハウスの形に下の縁を持ち上げて切り欠く
+      var mp = (ZS + zt(p[1])) / 2 + 0.5, mq = (ZS + zt(q[1])) / 2 + 0.5;
+      band(p, q, ZB, ZB, p, q, ZS, ZS);                      // 下の帯
+      band(p, q, ZS, ZS, pi, qi, mp, mq);                    // 肩
+      band(pi, qi, mp, mq, pt, qt, zt(p[1]), zt(q[1]));      // 上へ回り込む
     }
     // 上の面（ボンネット・荷室のふた）。前後に細かく区切った帯にして、場所ごとに傾きで明るさが変わるように
     var nL = L.length;
@@ -3192,8 +3207,8 @@
       F.push([hubc, 'hubc', piv]);
     }
     function well(cy, s){
-      F.push([[[s*7.4, cy - 7.2, 0.6], [s*7.4, cy + 7.2, 0.6], [s*7.4, cy + 7.2, ZS + 0.6], [s*7.4, cy - 7.2, ZS + 0.6]], 'well']);
-      F.push([[[s*7.4, cy - 7.2, ZS + 0.6], [s*7.4, cy + 7.2, ZS + 0.6], [s*13.2, cy + 7.2, ZS + 0.6], [s*13.2, cy - 7.2, ZS + 0.6]], 'well']);
+      F.push([[[s*7.4, cy - 7.2, 0.6], [s*7.4, cy + 7.2, 0.6], [s*7.4, cy + 7.2, 11.2], [s*7.4, cy - 7.2, 11.2]], 'well']);
+      F.push([[[s*7.4, cy - 7.2, 11.2], [s*7.4, cy + 7.2, 11.2], [s*13.4, cy + 7.2, 11.2], [s*13.4, cy - 7.2, 11.2]], 'well']);
     }
     well(-18.5, -1); well(-18.5, 1); well(18.5, -1); well(18.5, 1);
     tire(0, -18.5, -8.0, -14.0, 5.0); tire(0, -18.5, 8.0, 14.0, 5.0);   // 泥よけの内側に収まる幅
@@ -3744,18 +3759,20 @@ function drawCarNew(ctx, COL, steerV, sliding, slip, blink, brakeOn){
 
   ctx.save(); bodyPath(ctx, 0, 0); ctx.clip();
 
-  // 泥よけの張り出し（控えめ。うっすら影を落とす程度）
-  ctx.fillStyle = 'rgba(0,0,0,0.20)';
-  rr(ctx, -14.2, -25.0, 3.4, 14.0, 2.0); ctx.fill();
-  rr(ctx,  10.8, -25.0, 3.4, 14.0, 2.0); ctx.fill();
-  rr(ctx, -14.6,  11.5, 3.6, 14.5, 2.0); ctx.fill();
-  rr(ctx,  11.0,  11.5, 3.6, 14.5, 2.0); ctx.fill();
-  // 泥よけの縁の線
-  ctx.strokeStyle = 'rgba(0,0,0,0.34)'; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(-11.0, -25.0); ctx.lineTo(-11.0, -11.0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo( 11.0, -25.0); ctx.lineTo( 11.0, -11.0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(-11.2,  11.5); ctx.lineTo(-11.2,  26.0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo( 11.2,  11.5); ctx.lineTo( 11.2,  26.0); ctx.stroke();
+  // 泥よけの張り出し：車体の輪郭に沿って内側へ弧を描く線と、その外側のうっすらした影
+  function fender(sx, y0, ym, y1, xin, xmid){
+    ctx.beginPath();
+    ctx.moveTo(sx*xin, y0); ctx.quadraticCurveTo(sx*xmid, ym, sx*xin, y1);
+    ctx.lineTo(sx*16, y1); ctx.lineTo(sx*16, y0); ctx.closePath();
+    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(sx*xin, y0); ctx.quadraticCurveTo(sx*xmid, ym, sx*xin, y1);
+    ctx.strokeStyle = 'rgba(0,0,0,0.34)'; ctx.lineWidth = 0.8; ctx.stroke();
+  }
+  fender(-1, -26.0, -18.5, -11.0, 12.0, 10.4);
+  fender( 1, -26.0, -18.5, -11.0, 12.0, 10.4);
+  fender(-1,  11.0,  18.5,  26.5, 12.4, 10.6);
+  fender( 1,  11.0,  18.5,  26.5, 12.4, 10.6);
   // 横に走る細い帯
   ctx.fillStyle = 'rgba(0,0,0,0.20)';
   ctx.fillRect(-13.0, -3.0, 2.2, 12.0);
