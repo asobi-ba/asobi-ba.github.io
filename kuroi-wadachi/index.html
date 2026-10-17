@@ -282,6 +282,7 @@
     border:1px solid rgba(196,192,182,.22);border-radius:3px;padding:5px 8px;
   }
   .veil .gh{ color:var(--cool);font-size:13.5px;letter-spacing:.04em; }
+  .veil .stats{ color:var(--dim);font-size:12px;letter-spacing:.02em;line-height:1.6; }
   .medal{display:inline-block;min-width:1.6em;padding:0 5px;border-radius:9px;font-weight:700;font-size:12.5px;
     letter-spacing:0;text-align:center;color:#1A1A1E;line-height:1.5}
   .medal.m1{background:#C8875A} .medal.m2{background:#C9CDD4} .medal.m3{background:#F2C94C}
@@ -1258,10 +1259,11 @@
 
   var courseIdx = 0;
   var TRACK = [], TRACKLEN = 0, STEP = 7;
+  var CORNERS = [];                    // コーナー（曲がる区切り）ごとの [入口, 出口] の点の番号。走る順
 
   function buildTrack(){
     var CO = COURSES[courseIdx], COURSE = CO.segs;
-    TRACK.length = 0;
+    TRACK.length = 0; CORNERS.length = 0;
     var x = 0, y = 0, a = 0, d = 0;      // a: 進行方向（0=上, 正=右回り）
     var HL = HILL[CO.rev ? CO.base : courseIdx];
     function push(){
@@ -1286,6 +1288,7 @@
         var len = rad * deg;
         var n2 = Math.max(2, Math.round(len/STEP));
         var dA = (sg[0]==='R' ? deg : -deg) / n2;
+        CORNERS.push([TRACK.length - 1, TRACK.length - 1 + n2]);
         for (var k=0;k<n2;k++){
           a += dA;
           x += Math.sin(a)*STEP; y += -Math.cos(a)*STEP; d += STEP; push();
@@ -1302,6 +1305,11 @@
       }
       TRACK.length = 0;
       for (ri = 0; ri < R.length; ri++) TRACK.push(R[ri]);
+      // コーナーも走る順に並べ直す
+      var NL = R.length - 1, CR2 = [];
+      for (ri = CORNERS.length - 1; ri >= 0; ri--) CR2.push([NL - CORNERS[ri][1], NL - CORNERS[ri][0]]);
+      CORNERS.length = 0;
+      for (ri = 0; ri < CR2.length; ri++) CORNERS.push(CR2[ri]);
     }
     buildProfile();
     buildCheckpoints();
@@ -1439,6 +1447,8 @@
   var riv = null;                        // ライバルの車
   var rivFin = 0;                        // ライバルがゴールしたタイム（0＝まだ）
   var rivAt = [], myAt = [];             // コース上の各点を通ったタイム（差の表示用）
+  // 走りの成績表（ゴールで見せる）：壁に当たった回数と場所、いちばん長いドリフト、各点を通ったタイム
+  var stWall = [], stWallT = -9, stDrift = 0, stDriftAt = 0, passAt = [], passSeen = -1;
   var rivWheels = null, bumpT = 0;
   function CH(){ return CHAPTERS[chap]; }
 
@@ -1620,14 +1630,16 @@
              ang: ghost[a+2] + da * u };
   }
   // 手本が、いまの自分と同じ地点を通ったのは何秒のときか
-  function ghostTimeAt(gi){
-    if (!ghost) return -1;
-    var n = ghost.length / 4, lo = 0, hi = n - 1;
-    if (ghost[3] > gi) return 0;
-    if (ghost[(n-1)*4 + 3] < gi) return -1;
+  // arr を渡すと、その記録で調べる（成績表で使う）
+  function ghostTimeAt(gi, arr){
+    var g = arr || ghost;
+    if (!g) return -1;
+    var n = g.length / 4, lo = 0, hi = n - 1;
+    if (g[3] > gi) return 0;
+    if (g[(n-1)*4 + 3] < gi) return -1;
     while (lo < hi){
       var mid = (lo + hi) >> 1;
-      if (ghost[mid*4 + 3] < gi) lo = mid + 1; else hi = mid;
+      if (g[mid*4 + 3] < gi) lo = mid + 1; else hi = mid;
     }
     return lo * GH_DT;
   }
@@ -1721,6 +1733,49 @@
   }
   function fmt(t){ return t.toFixed(2); }
 
+  // ---------- 走りの成績表（ゴールの画面に出す）----------
+  // コースを「コーナーの出口まで」で区切る。第1区間＝スタート〜第1コーナーの出口、最後はゴール前の直線
+  function secOf(i){
+    for (var k = 0; k < CORNERS.length; k++) if (i <= CORNERS[k][1]) return k;
+    return CORNERS.length;
+  }
+  // 相手（ゴースト・ライバル）と区間ごとに比べ、負けた区間を大きい順に最大3つ。
+  // at(i)＝相手がコース上の点 i を通ったタイム（分からなければ -1）
+  function lostSecs(at){
+    var out = [], a = 0;
+    for (var k = 0; k <= CORNERS.length; k++){
+      var b = k < CORNERS.length ? CORNERS[k][1] : passSeen;
+      if (b > passSeen) break;
+      var ta = at(a), tb = at(b);
+      if (ta >= 0 && tb >= 0 && passAt[a] !== undefined && passAt[b] !== undefined){
+        var d = (passAt[b] - passAt[a]) - (tb - ta);
+        if (d >= 0.05) out.push({ k: k, d: d });
+      }
+      a = b;
+    }
+    out.sort(function(x, y){ return y.d - x.d; });
+    return out.slice(0, 3);
+  }
+  function statsHtml(vs){
+    // 場所はコーナーの番号だけ並べ、最後に「コーナー」を付ける（ゴール前の直線は別に書く）
+    function where(ks){
+      var nums = [], goal = false;
+      for (var j = 0; j < ks.length; j++){ if (ks[j] < CORNERS.length) nums.push('第' + (ks[j] + 1)); else goal = true; }
+      return (nums.length ? nums.join('・') + 'コーナー' : '') + (goal ? (nums.length ? '、' : '') + 'ゴール前' : '');
+    }
+    var w = [], i;
+    for (i = 0; i < stWall.length; i++){ var k = secOf(stWall[i]); if (w.indexOf(k) < 0) w.push(k); }
+    var line1 = '壁に当たった ' + (stWall.length ? stWall.length + '回（' + where(w.slice(0, 4)) + (w.length > 4 ? '…' : '') + '）' : 'なし') +
+                '<br>いちばん長いドリフト ' + (stDrift >= 0.1 ? stDrift.toFixed(1) + '秒（' + where([secOf(stDriftAt)]) + '）' : 'なし');
+    var line2 = '';
+    if (vs) {
+      var L = lostSecs(vs.at), parts = [];
+      for (i = 0; i < L.length; i++) parts.push((L[i].k < CORNERS.length ? '第' + (L[i].k + 1) : 'ゴール前') + ' +' + L[i].d.toFixed(2));
+      line2 = '<br>' + vs.who + (parts.length ? 'に離されたコーナー<br>' + parts.join('　') : 'に離された所はなし');
+    }
+    return '<br><span class="stats">' + line1 + line2 + '</span>';
+  }
+
   // ---------- メダル（コース × 天気ごとの目標タイム）----------
   // 金＝ライバルの運転手を全開（アクセル床まで・速さの上限なし。物語の最後の相手とほぼ同じ強さ）で
   //   1台だけ走らせたタイム。node で運転のしかた16通りを試し、いちばん速かったものを 0.1秒単位で切り上げた。
@@ -1776,6 +1831,7 @@
     rec.length = 0; rivRec.length = 0;
     riv = null; rivFin = 0; rivWheels = null; bumpT = 0;
     rivAt.length = 0; myAt.length = 0;
+    stWall.length = 0; stWallT = -9; stDrift = 0; stDriftAt = 0; passAt.length = 0; passSeen = -1;
     if (story) {
       // 並んでスタート。自分が右、ライバルが左
       var R = 20;
@@ -1851,17 +1907,18 @@
     if (isNew || !ghosts[SL()]) { saveGhost(time); ghost = ghosts[SL()]; }
     sendGhost(time);
     if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); WADACHI_AUDIO.goal(isNew); }
+    var sts = statsHtml(gNow ? { who: 'ゴースト', at: function(i){ return ghostTimeAt(i, gNow.arr); } } : null);
     veilTitle.textContent = 'GOAL';
     if (mode === 'drift') {
       veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
         '<span class="big">' + score.toLocaleString('ja-JP') + '</span><br>' +
         '<span class="sub">' + (dNew ? 'NEW BEST' : 'BEST ' + driftBest().toLocaleString('ja-JP')) + '</span><br>' +
-        'タイム ' + fmt(time) + (isNew ? '（ベスト更新）' : '') + condNote() + replayRow();
+        'タイム ' + fmt(time) + (isNew ? '（ベスト更新）' : '') + sts + condNote() + replayRow();
     } else {
       veilBody.innerHTML = '<span class="course">' + COURSES[courseIdx].name + '</span><br>' +
         '<span class="big">' + fmt(time) + '</span><br>' +
         '<span class="sub">' + (isNew ? 'NEW BEST' : 'BEST ' + fmt(best)) + '</span><br>' +
-        'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + medalResult(time, prevMedal) + condNote() + replayRow();
+        'ドリフト ' + score.toLocaleString('ja-JP') + ' 点' + medalResult(time, prevMedal) + sts + condNote() + replayRow();
     }
     goBtn.textContent = 'もういちど';
     veil.classList.remove('off');
@@ -1941,7 +1998,7 @@
     var talk = win ? c.win : c.lose;
     veilBody.innerHTML = chapHead() + '<br>' +
       '<span class="big">' + fmt(time) + '</span><br>' + res + '<br>' +
-      whoLine() + '<br>' +
+      whoLine() + (miss > 0 ? '' : statsHtml({ who: 'あいて', at: function(i){ return rivAt[i] !== undefined ? rivAt[i] : -1; } })) + '<br>' +
       (c.boss ? '<span class="narr">' + talk + '</span>' : '<span class="line">「' + talk + '」</span>') + replayRow();
     goBtn.textContent = win ? (last ? 'エンディングへ' : '次の相手へ') : 'もういちど';
     veil.classList.remove('off');
@@ -2198,6 +2255,9 @@
 
     if (car.wall) {
       if (window.WADACHI_AUDIO) WADACHI_AUDIO.hitWall();
+      // 壁ぞいに擦っている間は1回と数える（0.5秒あかずに また当たったら同じ1回）
+      if (time - stWallT > 0.5) stWall.push(idx);
+      stWallT = time;
       pending = 0; mult = 1; driftT = 0;
       for (var i=0;i<8;i++) smoke.push({ x:car.x, y:car.y, r:4+Math.random()*7, life:1, h:TRACK[idx].h });
     }
@@ -2213,6 +2273,7 @@
       driftT += dt; idleT = 0;
       mult = Math.min(8, 1 + Math.floor(driftT / 1.5));
       pending += slip * sp * dt * 1.6;
+      if (driftT > stDrift) { stDrift = driftT; stDriftAt = idx; }
     } else {
       idleT += dt;
       if (pending > 0 && idleT > 0.4) bank();
@@ -2239,6 +2300,8 @@
     }
 
     checkGate();
+    for (var pi = passSeen + 1; pi <= idx; pi++) passAt[pi] = time;
+    if (idx > passSeen) passSeen = idx;
 
     // ゴーストのために位置を控える（0.05秒ごと）
     while (rec.length / 4 * GH_DT <= time && rec.length < 4 * 4000) {
