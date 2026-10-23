@@ -1254,6 +1254,60 @@
       win:'ゴールの先で、黒い車は静かに止まった。窓が少しだけ開いて、ひと言。<br>「——次は、おまえが轍を残す番だ」',
       lose:'黒い車は霧の中へ消えた。路面には、黒い轍だけが残っていた。' }
   ];
+  // ---------- 勝ち抜き（エンディングの後）----------
+  // 13人を「一段強く」した版と続けて走る。負けたら第1戦から。運転のしかた P は物語と同じ（人ごとの癖は残す）、
+  // 強さ pow・top だけ上げた。後の相手ほど全開に近く、最後の三人は金メダル並み。
+  // 決め方：物語の相手の単独タイムが金から何%遅いかを、第1戦は6割・第12戦は1割まで縮めたタイムを目標にし、
+  //   node で pow を0.01刻み／top を5刻みで走らせて いちばん近いものを選んだ（() は単独のタイム。物語の時は後ろ）。
+  //   ハヤテ（蛇骨向けの走り方）は全開でも26秒台までしか縮まないので、届くところまで。
+  //   黒い轍は物語の時点で全開（pow 1）なので強さはそのまま。
+  var GAUNT = [
+    { pow:0.82,  // (27.55 ← 29.97)
+      pre:'お、橙色の。噂は聞いてるぜ。今度はこっちも本気で踏む。',
+      win:'ははっ、本気でもダメか。上の連中にも、もう一回見せてやれよ。' },
+    { pow:0.80,  // (26.53 ← 28.20)
+      pre:'あれから毎晩、ヘアピンだけ走り込んだ。半車身、取り返しに来たよ。',
+      win:'……まだ届かない。でも差は縮んでる。次は負けない。' },
+    { pow:0.89,  // (28.70 ← 30.73)
+      pre:'上りの三人で決めたんだ。今度は上りで勝負しろってな。',
+      win:'踏み負けないどころか、踏み勝ってやがる。' },
+    { pow:0.86,  // (25.25 ← 26.52)
+      pre:'雨を待ってた。おまえとまた、濡れた沢を並んで下りるためにな。',
+      win:'雨の沢は、もう完全におまえのものだな。' },
+    { pow:0.90,  // (27.43 ← 28.48)
+      pre:'霧の蛇骨を、もう一度。今度は案内じゃない、勝ちに行く。',
+      win:'先が見えないのは同じなのに……。おまえには道が見えているのか。' },
+    { pow:0.94,  // (26.40 ← 27.10)
+      pre:'入り方、一から組み直したんだ。今度は目を開けたまま勝つ。',
+      win:'組み直しても届かないか。姉さんの言うとおりだ。' },
+    { pow:0.96,  // (26.27 ← 28.63)
+      pre:'出口の向き、おまえの走りを見て作り直した。上りで返してもらう。',
+      win:'真似しても、本物には勝てないってことか。' },
+    { pow:1,     // (23.97 ← 24.83)
+      pre:'リズムを変えた。今夜の雨は、前よりずっと速いよ。',
+      win:'合わせてきたね。……蛇骨はもう、おまえの峠でもある。' },
+    { top:295,   // (23.48 ← 26.00)
+      pre:'直線、もう怖がらない。最後まで踏みっぱなしで行く。',
+      win:'踏みっぱなしでも離せない……。立ち上がりが、まだ違う。' },
+    { pow:0.95,  // (25.28 ← 26.55)
+      pre:'霧の高速コーナー、今度は私も踏んだまま抜ける。',
+      win:'白線を信じても、あなたの度胸には届かないのね。' },
+    { top:260,   // (25.20 ← 27.08)
+      pre:'覚悟なら決めてきた。雨の鷹ノ巣に、二度目は無いよ。',
+      win:'……覚悟でも負けた。今夜は、いい雨だった。' },
+    { top:290,   // (23.12 ← 25.12)
+      pre:'十年ぶりに、自分の走りを一から組み直した。……もう一度だ。',
+      win:'組み直しても届かない、か。いい峠になった。' },
+    { pow:1,     // (24.03 そのまま)
+      pre:'霧の杉ノ沢、午前二時。あの黒い車が、また停まっていた。今度は、窓が少しだけ開いている。',
+      win:'ゴールの先で、黒い車は止まらずに霧の中へ消えた。路面には、二本の轍が並んで残っていた。' }
+  ];
+  var GCH = CHAPTERS.map(function(c, i){
+    var o = {}, k;
+    for (k in c) o[k] = c[k];
+    for (k in GAUNT[i]) o[k] = GAUNT[i][k];
+    return o;
+  });
   var PROLOGUE = '深夜の峠に、ブレーキを踏まずに曲がる走り屋がいるという。<br>' +
                  '路面に黒い轍だけを残して消える。顔を見た者はいない。<br>' +
                  'おまえの橙色の車は、今夜はじめて峠に上がる。';
@@ -1498,7 +1552,28 @@
   // 走りの成績表（ゴールで見せる）：壁に当たった回数と場所、いちばん長いドリフト、各点を通ったタイム
   var stWall = [], stWallT = -9, stDrift = 0, stDriftAt = 0, passAt = [], passSeen = -1;
   var rivWheels = null, bumpT = 0;
-  function CH(){ return CHAPTERS[chap]; }
+  var gaunt = false;                     // 勝ち抜きの途中か（chap が何戦目か）
+  var gTot = 0;                          // 勝ち抜きで ここまで勝った走りの合計タイム
+  var gBest = { n: 0, t: 0 };            // 勝ち抜きの最高記録（何人抜いたか・13人抜いたときの合計タイム）
+  function CH(){ return gaunt ? GCH[chap] : CHAPTERS[chap]; }
+  function loadGaunt(){
+    try {
+      var o = JSON.parse(localStorage.getItem('wadachi.gaunt') || '{}');
+      gBest = { n: Math.max(0, Math.min(CHAPTERS.length, parseInt(o.n, 10) || 0)), t: +o.t > 0 ? +o.t : 0 };
+    } catch(e){ gBest = { n: 0, t: 0 }; }
+  }
+  // n 人抜いて終わった（13人なら合計 t）。記録が良くなったら残し、良くなったかを返す
+  function saveGaunt(n, t){
+    var up = n > gBest.n || (n === CHAPTERS.length && t > 0 && (!gBest.t || t < gBest.t));
+    if (!up) return false;
+    gBest = { n: n, t: n === CHAPTERS.length ? t : 0 };
+    try { localStorage.setItem('wadachi.gaunt', JSON.stringify(gBest)); } catch(e){}
+    return true;
+  }
+  function gauntRecord(){
+    if (!gBest.n) return '最高記録：まだ無し';
+    return '最高記録：' + (gBest.n === CHAPTERS.length ? '13人抜き　合計 ' + fmt(gBest.t) + ' 秒' : gBest.n + '人抜き');
+  }
 
   // ---------- 天気・車の仕上げ・競うもの ----------
   // 天気：晴れ／雨（滑りやすい）／霧（先が見えない）。車の仕上げは物語を全部勝ち抜くと選べる。
@@ -2020,11 +2095,21 @@
     while (b && b !== tabsEl && !b.getAttribute('data-c')) b = b.parentNode;
     if (!b || b === tabsEl) return;
     var v = b.getAttribute('data-c');
+    if (gaunt) { endGaunt(v === 's'); if (v === 's') return; }   // ほかの画面へ移ったら勝ち抜きは終わり（途中の記録は残す）
     if (daily) { var to = v === 's' ? courseIdx : parseInt(v, 10) + (courseIdx >= 3 ? 3 : 0); daily = false; loadOpts(); if (v !== 's') { setCourse(to); return; } }
     if (v === 's') { story = true; setCourse(CH().c); }
     else { story = false; setCourse(parseInt(v, 10) + (courseIdx >= 3 ? 3 : 0)); }   // 上りを選んでいたら上りのまま
   });
 
+  // 勝ち抜きを途中でやめる。ここまで勝った人数は記録に残す。show＝物語の画面を出す
+  function endGaunt(show){
+    if (!gaunt) return;
+    var n = chap + (st === 'done' && lastWin ? 1 : 0);      // 勝った直後の画面でやめたら、その人まで数える
+    if (n > 0) saveGaunt(n, n === CHAPTERS.length ? gTot : 0);
+    gaunt = false; gTot = 0; lastWin = false;
+    chap = Math.min(cleared, CHAPTERS.length - 1);
+    if (show !== false) setCourse(CH().c);
+  }
   // ---------- 物語の画面 ----------
   function chapHead(){
     return '<span class="chap">' +
@@ -2037,11 +2122,32 @@
     var c = CH();
     return '<span class="who"><i style="background:' + c.col + '"></i>' + c.tag + '　<b>' + c.who + '</b></span>';
   }
+  // 勝ち抜きの見出し（章送りは無し。何戦目か・ここまでの合計）
+  function gauntHead(){
+    return '<span class="chap"><span>勝ち抜き　第' + (chap + 1) + '戦 ／ ' + CHAPTERS.length + '　' + COURSES[CH().c].name + '・' +
+      (COURSES[CH().c].rev ? '上り' : '下り') + '・' + WXNAME[CH().wx] + '</span></span>';
+  }
+  function showGaunt(){
+    var c = CH();
+    veilTitle.textContent = c.boss ? 'FINAL BATTLE' : 'GAUNTLET';
+    veilBody.innerHTML = gauntHead() + '<br>' +
+      (chap === 0 ? '<span class="narr">峠の連中が、走りを組み直してきたらしい。<br>13人と続けて走る。負けたら第1戦から。</span><br>' :
+        '<span class="gh">' + chap + '人抜き　ここまでの合計 ' + fmt(gTot) + ' 秒</span><br>') +
+      whoLine() + '<br>' +
+      (c.boss ? '<span class="narr">' + c.pre + '</span>' : '<span class="line">「' + c.pre + '」</span>') + '<br>' +
+      '<span class="gh">' + gauntRecord() + '</span>' +
+      (chap === 0 ? colorRow() + tuneRow() : '') +
+      '<br><button type="button" class="nav endbtn" data-gq="1">勝ち抜きをやめる</button>';
+    goBtn.textContent = 'バトル開始';
+    veil.classList.remove('off');
+    countEl.classList.add('off');
+  }
   function showStory(){
     ending = false;
     st = 'title'; reset();
     if (window.WADACHI_AUDIO) WADACHI_AUDIO.stop();
     if (window.SCOREBOARD) SCOREBOARD.hide();
+    if (gaunt) { showGaunt(); return; }
     var c = CH();
     veilTitle.textContent = c.boss ? 'FINAL BATTLE' : 'TOUGE BATTLE';
     veilBody.innerHTML = chapHead() + '<br>' +
@@ -2051,8 +2157,31 @@
       '<span class="gh">並んでスタート。相手より先にゴールすれば勝ち。車はぶつかる。</span>' +
       (cleared > chap ? '<br><span class="gh">勝ち抜き済み</span>' : '') +
       (cleared >= CHAPTERS.length ? '<br><button type="button" class="nav endbtn" data-end="1">エンディングを見る</button>' : '') +
+      (allClear ? '<br><button type="button" class="nav endbtn" data-gs="1">勝ち抜きに挑む（強くなった13人と連続で）</button>' +
+        '<br><span class="gh">' + gauntRecord() + '</span>' : '') +
       colorRow() + tuneRow();
     goBtn.textContent = 'バトル開始';
+    veil.classList.remove('off');
+    countEl.classList.add('off');
+  }
+  function gauntResult(win, miss){
+    var c = CH(), n = win ? chap + 1 : chap, last = win && chap === CHAPTERS.length - 1;
+    if (win) gTot += time;
+    var up = (!win || last) ? saveGaunt(n, gTot) : false;
+    if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); if (win) WADACHI_AUDIO.goal(true); else WADACHI_AUDIO.fail(); }
+    veilTitle.textContent = last ? 'ALL CLEAR' : win ? 'WIN' : 'LOSE';
+    var res = miss > 0 ? '<span class="sub" style="color:#E0453A">関門を ' + miss + ' 箇所 くぐっていません（反則負け）</span>'
+            : '<span class="sub">あいて ' + (rivFin ? fmt(rivFin) : 'まだ走っている') + '</span>';
+    var sum = last ? '<b>13人抜き</b>　合計 ' + fmt(gTot) + ' 秒'
+            : win ? n + '人抜き　ここまでの合計 ' + fmt(gTot) + ' 秒'
+            : n + '人抜きで終わり';
+    var talk = win ? c.win : c.lose;
+    veilBody.innerHTML = gauntHead() + '<br>' +
+      '<span class="big">' + fmt(time) + '</span><br>' + res + '<br>' +
+      '<span class="gh">' + sum + (up ? '　<b>記録更新</b>' : '') + '<br>' + gauntRecord() + '</span><br>' +
+      whoLine() + (miss > 0 ? '' : statsHtml({ who: 'あいて', at: function(i){ return rivAt[i] !== undefined ? rivAt[i] : -1; } })) + '<br>' +
+      (c.boss ? '<span class="narr">' + talk + '</span>' : '<span class="line">「' + talk + '」</span>') + replayRow();
+    goBtn.textContent = last ? 'おわり' : win ? '次の相手へ' : '第1戦から';
     veil.classList.remove('off');
     countEl.classList.add('off');
   }
@@ -2060,6 +2189,7 @@
     var c = CH();
     var win = miss === 0 && (!rivFin || time < rivFin);
     lastWin = win;
+    if (gaunt) { gauntResult(win, miss); return; }
     if (win && cleared <= chap) { cleared = chap + 1; saveStory(); }
     if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); if (win) WADACHI_AUDIO.goal(true); else WADACHI_AUDIO.fail(); }
     var last = win && chap === CHAPTERS.length - 1;
@@ -2085,6 +2215,14 @@
     if (st === 'replay') { endReplay(); return; }
     if (st === 'pause') { setPause(false); return; }
     if (ending) { showStory(); return; }
+    if (gaunt && st === 'done') {
+      // 勝てば次の相手、13人抜いたら物語の画面へ、負けたら第1戦から
+      if (lastWin && chap < CHAPTERS.length - 1) chap++;
+      else if (lastWin) { gaunt = false; chap = Math.min(cleared, CHAPTERS.length - 1); }
+      else { chap = 0; gTot = 0; }
+      lastWin = false; setCourse(CH().c);
+      return;
+    }
     if (story && st === 'done' && lastWin) {
       if (chap < CHAPTERS.length - 1) { chap++; lastWin = false; setCourse(CH().c); }
       else { lastWin = false; showEnding(); }
@@ -2153,6 +2291,8 @@
       return;
     }
     if (b && b.getAttribute && b.getAttribute('data-end')) { showEnding(); return; }
+    if (b && b.getAttribute && b.getAttribute('data-gs')) { gaunt = true; chap = 0; gTot = 0; lastWin = false; setCourse(CH().c); return; }
+    if (b && b.getAttribute && b.getAttribute('data-gq')) { endGaunt(); return; }
     if (!b || !b.getAttribute || !b.getAttribute('data-nav') || b.disabled) return;
     var n = chap + parseInt(b.getAttribute('data-nav'), 10);
     if (n < 0 || n > Math.min(cleared, CHAPTERS.length - 1)) return;
@@ -2174,7 +2314,7 @@
     ghostMode = (ghostMode + 1) % 3;
     try { localStorage.setItem('wadachi.ghostMode', String(ghostMode)); } catch(e){}
     syncGh();
-    if (st === 'title' || st === 'done') showTitle2();
+    if (!story && (st === 'title' || st === 'done')) showTitle2();   // 物語の画面にはゴーストの行が無い（別の行を書き換えてしまう）
   }
   if (ghBtn) ghBtn.addEventListener('click', toggleGh);
 
@@ -4210,6 +4350,7 @@ function shade(hex, k){
     wiped = resetIfOldRules();
     loadBest();
     loadStory();
+    loadGaunt();
     loadMyCol();
     loadOpts();
     syncWx();
