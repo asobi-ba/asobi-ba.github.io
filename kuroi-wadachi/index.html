@@ -1627,9 +1627,12 @@
 
   // 車の色（物語を全部勝ち抜くと選べる）。はじめの橙と、物語の相手（13人）の車の色。
   var MYCOL0 = '#F0873A';
+  // 勝ち抜きで13人抜くと増える2色
+  var WINCOL = [{ who:'轍の漆黒', col:'#16161C' }, { who:'勝ち抜きの金', col:'#FFD54A' }];
   function palette(){
     var a = [{ who:'はじめの色', col: MYCOL0 }];
     for (var i = 0; i < CHAPTERS.length; i++) a.push({ who: CHAPTERS[i].who, col: CHAPTERS[i].col });
+    if (gBest.n >= CHAPTERS.length) a = a.concat(WINCOL);
     return a;
   }
   function setMyCol(col, save){
@@ -2127,8 +2130,10 @@
     return '<span class="chap"><span>勝ち抜き　第' + (chap + 1) + '戦 ／ ' + CHAPTERS.length + '　' + COURSES[CH().c].name + '・' +
       (COURSES[CH().c].rev ? '上り' : '下り') + '・' + WXNAME[CH().wx] + '</span></span>';
   }
+  var GBOARD = 'wadachi-gaunt';           // 勝ち抜きの順位表（13人抜いたときの合計タイム。車の仕上げでは分けない）
   function showGaunt(){
     var c = CH();
+    if (window.SCOREBOARD) SCOREBOARD.top(GBOARD);
     veilTitle.textContent = c.boss ? 'FINAL BATTLE' : 'GAUNTLET';
     veilBody.innerHTML = gauntHead() + '<br>' +
       (chap === 0 ? '<span class="narr">峠の連中が、走りを組み直してきたらしい。<br>13人と続けて走る。負けたら第1戦から。</span><br>' :
@@ -2157,6 +2162,7 @@
       '<span class="gh">並んでスタート。相手より先にゴールすれば勝ち。車はぶつかる。</span>' +
       (cleared > chap ? '<br><span class="gh">勝ち抜き済み</span>' : '') +
       (cleared >= CHAPTERS.length ? '<br><button type="button" class="nav endbtn" data-end="1">エンディングを見る</button>' : '') +
+      (gBest.n >= CHAPTERS.length ? '<br><button type="button" class="nav endbtn" data-om="1">おまけの話を見る</button>' : '') +
       (allClear ? '<br><button type="button" class="nav endbtn" data-gs="1">勝ち抜きに挑む（強くなった13人と連続で）</button>' +
         '<br><span class="gh">' + gauntRecord() + '</span>' : '') +
       colorRow() + tuneRow();
@@ -2167,7 +2173,9 @@
   function gauntResult(win, miss){
     var c = CH(), n = win ? chap + 1 : chap, last = win && chap === CHAPTERS.length - 1;
     if (win) gTot += time;
+    var newCol = last && gBest.n < CHAPTERS.length;           // はじめて13人抜いた（色が増える）
     var up = (!win || last) ? saveGaunt(n, gTot) : false;
+    if (last && window.SCOREBOARD) SCOREBOARD.over(GBOARD, Math.round(gTot * 100) / 100);
     if (window.WADACHI_AUDIO) { WADACHI_AUDIO.stop(); if (win) WADACHI_AUDIO.goal(true); else WADACHI_AUDIO.fail(); }
     veilTitle.textContent = last ? 'ALL CLEAR' : win ? 'WIN' : 'LOSE';
     var res = miss > 0 ? '<span class="sub" style="color:#E0453A">関門を ' + miss + ' 箇所 くぐっていません（反則負け）</span>'
@@ -2179,9 +2187,10 @@
     veilBody.innerHTML = gauntHead() + '<br>' +
       '<span class="big">' + fmt(time) + '</span><br>' + res + '<br>' +
       '<span class="gh">' + sum + (up ? '　<b>記録更新</b>' : '') + '<br>' + gauntRecord() + '</span><br>' +
+      (newCol ? '<span class="gh" style="color:#FFC27A">車の色が2つ増えました<br>' + WINCOL[0].who + '・' + WINCOL[1].who + '</span><br>' : '') +
       whoLine() + (miss > 0 ? '' : statsHtml({ who: 'あいて', at: function(i){ return rivAt[i] !== undefined ? rivAt[i] : -1; } })) + '<br>' +
       (c.boss ? '<span class="narr">' + talk + '</span>' : '<span class="line">「' + talk + '」</span>') + replayRow();
-    goBtn.textContent = last ? 'おわり' : win ? '次の相手へ' : '第1戦から';
+    goBtn.textContent = last ? 'おまけの話へ' : win ? '次の相手へ' : '第1戦から';
     veil.classList.remove('off');
     countEl.classList.add('off');
   }
@@ -2218,7 +2227,7 @@
     if (gaunt && st === 'done') {
       // 勝てば次の相手、13人抜いたら物語の画面へ、負けたら第1戦から
       if (lastWin && chap < CHAPTERS.length - 1) chap++;
-      else if (lastWin) { gaunt = false; chap = Math.min(cleared, CHAPTERS.length - 1); }
+      else if (lastWin) { gaunt = false; gTot = 0; chap = Math.min(cleared, CHAPTERS.length - 1); lastWin = false; showOmake(); return; }
       else { chap = 0; gTot = 0; }
       lastWin = false; setCourse(CH().c);
       return;
@@ -2266,6 +2275,32 @@
     veil.classList.remove('off');
     countEl.classList.add('off');
   }
+  // 勝ち抜き（13人抜き）の後の おまけの話。見せ方はエンディングと同じ
+  var OMAKE = [
+    '13人を抜いた夜から、しばらくして――',
+    '杉ノ沢のスタート地点に、<br>走り屋が集まるようになった。<br>橙色の車を ひと目見たいのだと、タケは言う。',
+    '蛇骨の双子は、<br>二人で一本の走りを組み立てている。<br>姉が入って、弟が出る。<br>まだ完成はしていないらしい。',
+    'カシワギは峠を降りた。<br>今は鷹ノ巣のふもとで、<br>若い連中に走り方を教えている。',
+    '霧の夜、杉ノ沢で<br>また黒い車を見たという話がある。<br>ただ今度は、その横に<br>橙色の車が並んでいた、と。',
+    '路面に残る轍は、今は二本ある。'
+  ];
+  function showOmake(){
+    ending = true;                        // 「おわり」で物語の画面へ戻るのはエンディングと同じ
+    st = 'title';
+    veilTitle.textContent = 'EXTRA';
+    var h = '', i, d = 0;
+    for (i = 0; i < OMAKE.length; i++, d += 1.6) {
+      h += '<span class="narr fade" style="animation-delay:' + d.toFixed(1) + 's">' + OMAKE[i] + '</span><br>';
+    }
+    h += '<span class="gh fade" style="animation-delay:' + d.toFixed(1) + 's">' + gauntRecord() + '</span><br>';
+    d += 1.4;
+    h += '<span class="narr end fade" style="animation-delay:' + d.toFixed(1) + 's">黒い轍　― おまけ ―<br>勝ち抜き、おめでとう。</span>' +
+         '<br><span class="gh fade" style="animation-delay:' + (d + 1.2).toFixed(1) + 's">増えた車の色（' + WINCOL[0].who + '・' + WINCOL[1].who + '）は<br>物語の画面から選べます</span>';
+    veilBody.innerHTML = h;
+    goBtn.textContent = 'おわり';
+    veil.classList.remove('off');
+    countEl.classList.add('off');
+  }
   veilBody.addEventListener('click', function(e){
     var b = e.target;
     if (b && b.getAttribute && b.getAttribute('data-replay')) { startReplay(b.getAttribute('data-replay')); return; }
@@ -2291,6 +2326,7 @@
       return;
     }
     if (b && b.getAttribute && b.getAttribute('data-end')) { showEnding(); return; }
+    if (b && b.getAttribute && b.getAttribute('data-om')) { showOmake(); return; }
     if (b && b.getAttribute && b.getAttribute('data-gs')) { gaunt = true; chap = 0; gTot = 0; lastWin = false; setCourse(CH().c); return; }
     if (b && b.getAttribute && b.getAttribute('data-gq')) { endGaunt(); return; }
     if (!b || !b.getAttribute || !b.getAttribute('data-nav') || b.disabled) return;
@@ -4091,7 +4127,7 @@
     ctx.globalAlpha = 1;
 
     drawCarNew(ctx, myCol() === COL.body ? COL : { body: myCol(), lampCore: COL.lampCore }, steerV, sliding, lastSlip, blink, false);
-    if (COL.body === '#3A3A42' && !blink) {
+    if ((COL.body === '#3A3A42' || COL.body === '#16161C') && !blink) {   // 黒い車は路面に沈むので ふちを描く
       ctx.strokeStyle = 'rgba(200,205,220,0.35)'; ctx.lineWidth = 1.2;
       bodyPath(ctx, 0, 0); ctx.stroke();
     }

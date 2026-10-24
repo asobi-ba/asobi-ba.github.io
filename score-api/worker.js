@@ -45,7 +45,9 @@ const GAMES = {
   'gyaku-0':   { order: 'asc',  max: 3600,     unit: '秒' },
   'gyaku-1':   { order: 'asc',  max: 3600,     unit: '秒' },
   'gyaku-2':   { order: 'asc',  max: 3600,     unit: '秒' },
-  'gyaku-3':   { order: 'asc',  max: 3600,     unit: '秒' }
+  'gyaku-3':   { order: 'asc',  max: 3600,     unit: '秒' },
+  // 黒い轍の勝ち抜き：13人に続けて勝ったときの合計タイム。下限は13戦のコースごとの下限（WADACHI_MIN）を足したもの
+  'wadachi-gaunt': { order: 'asc', max: 3600, min: 235, unit: '秒' }
 };
 
 // 黒い轍は「コース × 天気 × 車の仕上げ × タイム／ドリフト点」の組み合わせごとに順位表を持つ。
