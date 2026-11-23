@@ -42,10 +42,12 @@ const GAMES = {
   'sokki-0':   { order: 'desc', max: 3000,     unit: '文字/分' },
   'sokki-1':   { order: 'desc', max: 3000,     unit: '文字/分' },
   'sokki-2':   { order: 'desc', max: 3000,     unit: '文字/分' },
-  'gyaku-0':   { order: 'asc',  max: 3600,     unit: '秒' },
-  'gyaku-1':   { order: 'asc',  max: 3600,     unit: '秒' },
-  'gyaku-2':   { order: 'asc',  max: 3600,     unit: '秒' },
-  'gyaku-3':   { order: 'asc',  max: 3600,     unit: '秒' },
+  // 逆ハンドル：下限は、ゲームの中の「機械に総当たりさせた最短」（一・二 47.1／三 46.6／試 27.8秒）の
+  // 8割を秒の整数に切り捨てたもの（黒い轍と同じ決め方）。外から 0秒 を送って1位になるのを防ぐ。
+  'gyaku-0':   { order: 'asc',  max: 3600, min: 37, unit: '秒' },
+  'gyaku-1':   { order: 'asc',  max: 3600, min: 37, unit: '秒' },
+  'gyaku-2':   { order: 'asc',  max: 3600, min: 37, unit: '秒' },
+  'gyaku-3':   { order: 'asc',  max: 3600, min: 22, unit: '秒' },
   // 黒い轍の勝ち抜き：13人に続けて勝ったときの合計タイム。下限は13戦のコースごとの下限（WADACHI_MIN）を足したもの
   'wadachi-gaunt': { order: 'asc', max: 3600, min: 235, unit: '秒' }
 };

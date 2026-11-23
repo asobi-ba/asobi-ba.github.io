@@ -152,6 +152,16 @@ check('順位表と一緒に走りの記録も消えた（' + r.body.ghostRemove
 g = await call('GET','/ghost?game=wadachi-1');
 check('消したあとは none', g.body.none===true);
 
+console.log('\n--- 逆ハンドルの下限 ---');
+for (const [gm, lo] of [['gyaku-0',37],['gyaku-1',37],['gyaku-2',37],['gyaku-3',22]]) {
+  let q = await call('POST','/submit',{game:gm,name:'ずる',score:0});
+  check(gm + ' 0秒は断る → ' + q.status, q.status===400);
+  q = await call('POST','/submit',{game:gm,name:'ずる',score:lo-0.1});
+  check(gm + ' ' + (lo-0.1).toFixed(1) + '秒は断る → ' + q.status, q.status===400);
+  q = await call('POST','/submit',{game:gm,name:'ふつう',score:lo+15.3});
+  check(gm + ' ' + (lo+15.3).toFixed(1) + '秒は受ける → ' + q.status, q.status===200);
+}
+
 console.log('\n=== 相手先の許可（CORS）===');
 check('許した相手には '+b.cors, b.cors==='https://pdylplplp-stack.github.io');
 
